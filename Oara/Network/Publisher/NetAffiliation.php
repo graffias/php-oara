@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * API Class
  *
  * @author     Carlos Morillo Merino
@@ -47,11 +66,11 @@ class Oara_Network_Publisher_NetAffiliation extends Oara_Network {
 
 		$this->_client = new Oara_Curl_Access($loginUrl, $valuesLogin, $credentials);
 
-		$cookieLocalion = realpath(dirname(__FILE__)).'/../../data/curl/'.$credentials['cookiesDir'].'/'.$credentials['cookiesSubDir'].'/'.$credentials["cookieName"].'_cookies.txt';
+		$cookieLocalion = COOKIES_BASE_DIR . DIRECTORY_SEPARATOR . $credentials['cookiesDir'] . DIRECTORY_SEPARATOR . $credentials['cookiesSubDir'] . DIRECTORY_SEPARATOR . $credentials["cookieName"].'_cookies.txt';
 
 		$cookieContent = file_get_contents($cookieLocalion);
 		$serverNumber = null;
-		if (preg_match("/www(.)\.netaffiliation\.com/", $cookieContent, $matches)) {
+		if (preg_match('/www(.)\.netaffiliation\.com/', $cookieContent, $matches)) {
 			$this->_serverNumber = $matches[1];
 		}
 
@@ -86,9 +105,6 @@ class Oara_Network_Publisher_NetAffiliation extends Oara_Network {
 	 */
 	public function checkConnection() {
 		$connection = true;
-
-
-
 		//Checking connection to the platform
 		$valuesFormExport = array();
 		$urls = array();
@@ -142,7 +158,7 @@ class Oara_Network_Publisher_NetAffiliation extends Oara_Network {
 		$valuesFormExport = array();
 		$valuesFormExport[] = new Oara_Curl_Parameter('authl', $this->_credentials["user"]);
 		$valuesFormExport[] = new Oara_Curl_Parameter('authv', $this->_credentials["apiPassword"]);
-		$valuesFormExport[] = new Oara_Curl_Parameter('champs', 'idprogramme,date,etat,argann,montant,taux,monnaie');
+		$valuesFormExport[] = new Oara_Curl_Parameter('champs', 'idprogramme,date,etat,argann,montant,taux,monnaie,idsite');
 
 		$valuesFormExport[] = new Oara_Curl_Parameter('debut', $dStartDate->toString("yyyy-MM-dd"));
 		$valuesFormExport[] = new Oara_Curl_Parameter('fin', $dEndDate->toString("yyyy-MM-dd"));
@@ -184,56 +200,4 @@ class Oara_Network_Publisher_NetAffiliation extends Oara_Network {
 		return $totalTransactions;
 	}
 
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Interface#getOverviewList($aMerchantIds, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$overviewArray = array();
-
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-						$overview['transaction_pending_value'] += $transaction['amount'];
-						$overview['transaction_pending_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-						$overview['transaction_declined_value'] += $transaction['amount'];
-						$overview['transaction_declined_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-						$overview['transaction_paid_value'] += $transaction['amount'];
-						$overview['transaction_paid_commission'] += $transaction['commission'];
-					}
-				}
-				$overviewArray[] = $overview;
-			}
-		}
-		return $overviewArray;
-	}
 }

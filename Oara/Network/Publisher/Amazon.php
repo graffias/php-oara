@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -42,8 +61,8 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 	 * Server Url for the Network Selected
 	 */
 	private $_networkServer = null;
-	
-	
+
+
 	private $_extension = null;
 	/**
 	 * Constructor and Login
@@ -83,7 +102,10 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 		$user = $this->_credentials['user'];
 		$password = $this->_credentials['password'];
 		$network = $this->_credentials['network'];
-		$this->_httpLogin = $this->_credentials['httpLogin'];
+		$this->_httpLogin = null;
+		if (isset($this->_credentials['httpLogin'])){
+			$this->_httpLogin = $this->_credentials['httpLogin'];
+		}
 		$extension = "";
 		$handle = "";
 		$this->_networkServer = "";
@@ -137,107 +159,64 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 		$this->_extension = $extension;
 		$this->_client = new Oara_Curl_Access($this->_networkServer."/gp/associates/network/main.html", array(), $this->_credentials);
 
-		// initial login page which redirects to correct sign in page, sets some cookies
-		$URL = "https://www.amazon$extension/ap/signin?openid.assoc_handle=amzn_associates_$handle&openid.return_to={$this->_networkServer}&openid.mode=checkid_setup&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.pape.max_auth_age=0&openid.ns.pape=http%3A%2F%2Fspecs.openid.net%2Fextensions%2Fpape%2F1.0&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select";
-		
-		
-		$dir = realpath(dirname(__FILE__)).'/../../data/curl/'.$this->_credentials['cookiesDir'].'/'.$this->_credentials['cookiesSubDir'].'/';
-		$cookieName = $this->_credentials["cookieName"];
-		$cookies = $dir.$cookieName.'_cookies.txt';
-		
-		$ch = curl_init();
-		curl_setopt($ch, CURLOPT_COOKIEJAR, $cookies);
-		curl_setopt($ch, CURLOPT_COOKIEFILE, $cookies);
-		curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.2.13) Gecko/20101206 Ubuntu/10.10 (maverick) Firefox/3.6.13');
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-		curl_setopt($ch, CURLOPT_HEADER, 0);
-		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-		
-		// set additional curl options using our previous options
-		curl_setopt($ch, CURLOPT_URL, $URL);
-		
-		curl_exec($ch); // make request
-		
-		$cookiesArray = self::readCookies($this->_credentials);
-		$cookieString = "";
-		foreach ($cookiesArray as $cookieName => $cookieValue){
-			$cookieString .= "&$cookieName=".urlencode($cookieValue);
-		}
-		$casperUrl = "http://affjet.dc.fubra.net/tools/amazon/amazon.php?extension=$extension&url=".urlencode($URL).$cookieString;
-		
-		
-		$context = \stream_context_create(array(
-				'http' => array(
-						'header'  => "Authorization: Basic " . base64_encode("{$this->_httpLogin}")
-				)
-		));
-			
-		
-		$page = \file_get_contents($casperUrl, false, $context);
-		
-		
-		// try to find the actual login form
-		if (!preg_match('/<form name="signIn".*?<\/form>/is', $page, $form)) {
-			die('Failed to find log in form!');
-		}
+	        if (!isset($this->_credentials["cookiesDir"])) {
+	            $this->_credentials["cookiesDir"] = "Oara";
+	        }
+	        if (!isset($this->_credentials["cookiesSubDir"])) {
+	            $this->_credentials["cookiesSubDir"] = "Import";
+	        }
+	        if (!isset($this->_credentials["cookieName"])) {
+	            $this->_credentials["cookieName"] = "default";
+	        }
 
-		$form = $form[0];
-		//echo $form;
-		// find the action of the login form
-		if (!preg_match('/action="([^"]+)"/i', $form, $action)) {
-			die('Failed to find login form url');
-		}
+			$dir = COOKIES_BASE_DIR . DIRECTORY_SEPARATOR . $this->_credentials['cookiesDir'] . DIRECTORY_SEPARATOR . $this->_credentials['cookiesSubDir'] . DIRECTORY_SEPARATOR;
+			$cookieName = $this->_credentials["cookieName"];
+			$cookies = $dir.$cookieName.'_cookies.txt';
 
-		$URL2 = $action[1]; // this is our new post url
-		
-		$dom = new Zend_Dom_Query($page);
-		$results = $dom->query('input[type="hidden"]');
-		$hiddenValue = null;
-		foreach ($results as $result){
-			$name = $result->attributes->getNamedItem("name")->nodeValue;
-			$hiddenValue = $result->attributes->getNamedItem("value")->nodeValue;
-			$postFields[$name] = $hiddenValue;
-		}
-		// add our login values
-		$postFields['email'] = $user;
-		$postFields['create'] = 0;
-		$postFields['password'] = $password;
-		
-		
+	        $ch = curl_init();
+	        curl_setopt($ch, CURLOPT_URL, $this->_networkServer);
+	        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	        curl_setopt($ch, CURLOPT_COOKIESESSION, true);
+	        curl_setopt($ch, CURLOPT_COOKIEFILE, $cookies);
+	        curl_setopt($ch, CURLOPT_COOKIEJAR, $cookies);
+	        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 
-		$post = '';
+	        $strHTML = curl_exec($ch);
+	        curl_close($ch);
 
-		// convert to string, this won't work as an array, form will not accept multipart/form-data, only application/x-www-form-urlencoded
-		foreach ($postFields as $key => $value) {
-			$post .= $key.'='.urlencode($value).'&';
-		}
+	        libxml_use_internal_errors(true);
+	        $objDOM = new DOMDocument();
+	        $objDOM->loadHTML($strHTML);
 
-		$post = substr($post, 0, -1);
-		
-		
-		
-		
-		
-		if (!isset($this->_credentials["cookiesDir"])) {
-			$this->_credentials["cookiesDir"] = "Oara";
-		}
-		if (!isset($this->_credentials["cookiesSubDir"])) {
-			$this->_credentials["cookiesSubDir"] = "Import";
-		}
-		if (!isset($this->_credentials["cookieName"])) {
-			$this->_credentials["cookieName"] = "default";
-		}
-		
+	        $objXPath = new DOMXPath($objDOM);
 
-		// set additional curl options using our previous options
-		curl_setopt($ch, CURLOPT_URL, $URL2);
-		curl_setopt($ch, CURLOPT_REFERER, $URL);
-		curl_setopt($ch, CURLOPT_POST, 1);
-		curl_setopt($ch, CURLOPT_POSTFIELDS, $post);
+	        $objForm = $objXPath->query("//form[@name='sign_in']");
+	        $objForm = $objForm->item(0);
 
-		curl_exec($ch); // make request
+	        $objInputs = $objXPath->query("//input[@type='hidden']", $objForm);
 
+	        $arrInputs = array(
+	            'username' => $user,
+	            'password' => $password,
+	        );
+	        foreach ($objInputs as $objInput) {
+	            $arrInputs[$objInput->getAttribute('name')] = $objInput->getAttribute('value');
+	        }
 
+	        $strURL = $objForm->getAttribute('action');
+
+	        // make the actual login-request
+	        $ch = curl_init();
+	        curl_setopt($ch, CURLOPT_URL, $strURL);
+	        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	        curl_setopt($ch, CURLOPT_COOKIEFILE, $cookies);
+	        curl_setopt($ch, CURLOPT_COOKIEJAR, $cookies);
+	        curl_setopt($ch, CURLOPT_POST, true);
+	        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($arrInputs));
+	        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+	        $strHTML = curl_exec($ch);
+	        curl_close($ch);
 	}
 	/**
 	 * Check the connection
@@ -246,13 +225,14 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 		//If not login properly the construct launch an exception
 		$connection = false;
 		$urls = array();
-		$urls[] = new Oara_Curl_Request($this->_networkServer."/gp/associates/network/main.html", array());
+		$urls[] = new Oara_Curl_Request($this->_networkServer."/gp/associates/network/reports/main.html", array());
 		$exportReport = $this->_client->get($urls);
-		
+
 		if (preg_match("/logout%26openid.ns/", $exportReport[0])) {
+
 			$dom = new Zend_Dom_Query($exportReport[0]);
 			$idBox = array();
-			$results = $dom->query('select[name="idbox_store_id"]');
+			$results = $dom->query('select[name="idbox_tracking_id"]');
 			$count = count($results);
 			if ($count == 0) {
 				$idBox[] = "";
@@ -269,12 +249,23 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 				}
 			}
 
+			$results = $dom->query('input[name="combinedReports"]');
+			foreach($results as $n) {
+				if ($n->getAttribute('checked') === 'checked') {
+					// Combined reports have been selected, use an empty idBox -> download data only once
+					$idBox = array('');
+					break;
+				}
+			}
+
+			// Use idBox only for US
 			$this->_idBox = $idBox;
 			$connection = true;
 		}
 
 		return $connection;
 	}
+
 	/**
 	 * (non-PHPdoc)
 	 * @see library/Oara/Network/Oara_Network_Publisher_Interface#getMerchantList()
@@ -338,16 +329,17 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 		$valuesFromExport[] = new Oara_Curl_Parameter('endDay', $endDate->toString("d"));
 		$valuesFromExport[] = new Oara_Curl_Parameter('endMonth', (int) $endDate->toString("M") - 1);
 		$valuesFromExport[] = new Oara_Curl_Parameter('endYear', $endDate->toString("yyyy"));
-		$valuesFromExport[] = new Oara_Curl_Parameter('idbox_store_id', $id);
+		$valuesFromExport[] = new Oara_Curl_Parameter('idbox_tracking_id', $id);
 
 		$urls = array();
 		$urls[] = new Oara_Curl_Request($this->_networkServer."/gp/associates/network/reports/report.html?", $valuesFromExport);
 		$exportReport = $this->_client->get($urls);
-		
-		if (preg_match("/Account Closed/", $exportReport[0])){
+
+		if (preg_match("/DOCTYPE/", $exportReport[0])){
 			return array();
 		}
 		$exportData = str_getcsv($exportReport[0], "\n");
+
 
 		$index = 2;
 		try{
@@ -355,7 +347,7 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 				throw new Exception("No date");
 			}
 			$transactionExportArray = str_getcsv(str_replace("\"", "", $exportData[$index]), "\t");
-			
+
 			$transactionDate = new Zend_Date($transactionExportArray[5], 'MMMM d,yyyy', 'en');
 		} catch (Exception $e){
 			$index = 3;
@@ -380,61 +372,13 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 			$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
 			$transaction['amount'] = Oara_Utilities::parseDouble($transactionExportArray[9]);
 			$transaction['commission'] = Oara_Utilities::parseDouble($transactionExportArray[10]);
+			$transaction['device_type'] = $transactionExportArray[11];
+			$transaction['skew'] = $transactionExportArray[2];
+			$transaction['title'] = $transactionExportArray[1];
 			$totalTransactions[] = $transaction;
 
 		}
 		return $totalTransactions;
-	}
-
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$totalOverviews = Array();
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-						$overview['transaction_pending_value'] += $transaction['amount'];
-						$overview['transaction_pending_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-						$overview['transaction_declined_value'] += $transaction['amount'];
-						$overview['transaction_declined_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-						$overview['transaction_paid_value'] += $transaction['amount'];
-						$overview['transaction_paid_commission'] += $transaction['commission'];
-					}
-				}
-				$totalOverviews[] = $overview;
-			}
-		}
-		return $totalOverviews;
 	}
 
 	/**
@@ -446,7 +390,7 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 		foreach ($this->_idBox as $id) {
 			$urls = array();
 			$paymentExport = array();
-			$paymentExport[] = new Oara_Curl_Parameter('idbox_store_id', $id);
+			$paymentExport[] = new Oara_Curl_Parameter('idbox_tracking_id', $id);
 			$urls[] = new Oara_Curl_Request($this->_networkServer."/gp/associates/network/your-account/payment-history.html?", $paymentExport);
 			$exportReport = $this->_client->get($urls);
 			$dom = new Zend_Dom_Query($exportReport[0]);
@@ -464,7 +408,7 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 					$obj['date'] = $paymentDate->toString("yyyy-MM-dd HH:mm:ss");
 					$obj['pid'] = ($paymentDate->toString("yyyyMMdd").substr((string) base_convert(md5($id), 16, 10), 0, 5));
 					$obj['method'] = 'BACS';
-					if (preg_match("/-/", $paymentExportArray[4]) && preg_match("/[0-9]*,?[0-9]*\.?[0-9]+/", $paymentExportArray[4], $matches)) {
+					if (preg_match('/[0-9]*,?[0-9]*\.?[0-9]+/', $paymentExportArray[4], $matches)) {
 						$obj['value'] = Oara_Utilities::parseDouble($matches[0]);
 						$paymentHistory[] = $obj;
 					}
@@ -518,17 +462,17 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 		}
 		return $innerHTML;
 	}
-	
+
 	/**
 	 *
 	 * Gets the cookies value for this network
 	 * @param unknown_type $credentials
 	 */
 	private function readCookies($credentials) {
-		$dir = realpath(dirname(__FILE__)).'/../../data/curl/'.$credentials['cookiesDir'].'/'.$credentials['cookiesSubDir'].'/';
+		$dir = COOKIES_BASE_DIR . DIRECTORY_SEPARATOR . $credentials['cookiesDir'] . DIRECTORY_SEPARATOR . $credentials['cookiesSubDir'] . DIRECTORY_SEPARATOR;
 		$cookieName = $credentials["cookieName"];
 		$cookies = $dir.$cookieName.'_cookies.txt';
-	
+
 		$aCookies = array();
 		$aLines = file($cookies);
 		foreach ($aLines as $line) {
@@ -539,9 +483,9 @@ class Oara_Network_Publisher_Amazon extends Oara_Network {
 					if ($arr[0] == ".amazon{$this->_extension}"){
 						$aCookies[$arr[5]] = str_replace("\n", "", $arr[6]);
 					}
-					
+
 				}
-					
+
 		}
 		return $aCookies;
 	}

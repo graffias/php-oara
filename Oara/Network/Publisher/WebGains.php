@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Api Class
  *
  * @author     Carlos Morillo Merino
@@ -91,19 +110,19 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 			$serverArray["es"] = 'www.webgains.es';
 			$serverArray["ie"] = 'www.webgains.ie';
 			$serverArray["it"] = 'www.webgains.it';
-
+			
 			$loginUrlArray = array();
-			$loginUrlArray["uk"] = 'https://www.webgains.com/loginform.html?action=login';
-			$loginUrlArray["fr"] = 'https://www.webgains.fr/loginform.html?action=login';
-			$loginUrlArray["us"] = 'https://us.webgains.com/loginform.html?action=login';
-			$loginUrlArray["de"] = 'https://www.webgains.de/loginform.html?action=login';
-			$loginUrlArray["fr"] = 'https://www.webgains.fr/loginform.html?action=login';
-			$loginUrlArray["nl"] = 'https://www.webgains.nl/loginform.html?action=login';
-			$loginUrlArray["dk"] = 'https://www.webgains.dk/loginform.html?action=login';
-			$loginUrlArray["se"] = 'https://www.webgains.se/loginform.html?action=login';
-			$loginUrlArray["es"] = 'https://www.webgains.es/loginform.html?action=login';
-			$loginUrlArray["ie"] = 'https://www.webgains.ie/loginform.html?action=login';
-			$loginUrlArray["it"] = 'https://www.webgains.it/loginform.html?action=login';
+			$loginUrlArray["uk"] = 'http://www.webgains.com/loginform.html?action=login';
+			$loginUrlArray["fr"] = 'http://www.webgains.fr/loginform.html?action=login';
+			$loginUrlArray["us"] = 'http://us.webgains.com/loginform.html?action=login';
+			$loginUrlArray["de"] = 'http://www.webgains.de/loginform.html?action=login';
+			$loginUrlArray["fr"] = 'http://www.webgains.fr/loginform.html?action=login';
+			$loginUrlArray["nl"] = 'http://www.webgains.nl/loginform.html?action=login';
+			$loginUrlArray["dk"] = 'http://www.webgains.dk/loginform.html?action=login';
+			$loginUrlArray["se"] = 'http://www.webgains.se/loginform.html?action=login';
+			$loginUrlArray["es"] = 'http://www.webgains.es/loginform.html?action=login';
+			$loginUrlArray["ie"] = 'http://www.webgains.ie/loginform.html?action=login';
+			$loginUrlArray["it"] = 'http://www.webgains.it/loginform.html?action=login';
 
 			$valuesLogin = array(
 			new Oara_Curl_Parameter('user_type', 'affiliateuser'),
@@ -113,8 +132,9 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 
 			foreach ($loginUrlArray as $country => $url){
 				$this->_webClient = new Oara_Curl_Access($url, $valuesLogin, $credentials);
-				if (preg_match("/\/affiliates\/logout\.html/", $this->_webClient->getConstructResult())) {
+				if (preg_match("/logout.html/", $this->_webClient->getConstructResult())) {
 					$this->_server = $serverArray[$country];
+					$this->_campaignMap = self::getCampaignMap($this->_webClient->getConstructResult());
 					break;
 				}
 			}
@@ -148,13 +168,11 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 		 * @see library/Oara/Network/Oara_Network_Publisher_Base#getMerchantList()
 		 */
 		public function getMerchantList() {
-			$this->_campaignMap = self::getCampaignMap();
-
 			$merchantList = Array();
 			foreach ($this->_campaignMap as $campaignKey => $campaignValue) {
 				$merchants = $this->_soapClient->getProgramsWithMembershipStatus($this->_exportMerchantParameters['username'], $this->_exportMerchantParameters['password'], $campaignKey);
 				foreach ($merchants as $merchant) {
-					if ($merchant->programMembershipStatusName == 'Live') {
+					if ($merchant->programMembershipStatusName == 'Live' || $merchant->programMembershipStatusName == 'Joined') {
 						$merchantList[$merchant->programID] = $merchant;
 					}
 
@@ -179,14 +197,15 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 			$dEndDate->setHour("23");
 			$dEndDate->setMinute("59");
 			$dEndDate->setSecond("59");
+			
 
 			foreach ($this->_campaignMap as $campaignKey => $campaignValue) {
 				try{
-					$transactionList = $this->_soapClient->getDetailedEarnings($dStartDate->getIso(), $dEndDate->getIso(), $campaignKey, $this->_exportTransactionParameters['username'], $this->_exportTransactionParameters['password']);
+					$transactionList = $this->_soapClient->getFullEarningsWithCurrency($dStartDate->getIso(), $dEndDate->getIso(), $campaignKey, $this->_exportTransactionParameters['username'], $this->_exportTransactionParameters['password']);
 				} catch(Exception $e){
 					if (preg_match("/60 requests/", $e->getMessage())){
 						sleep(60);
-						$transactionList = $this->_soapClient->getDetailedEarnings($dStartDate->getIso(), $dEndDate->getIso(), $campaignKey, $this->_exportTransactionParameters['username'], $this->_exportTransactionParameters['password']);
+						$transactionList = $this->_soapClient->getFullEarningsWithCurrency($dStartDate->getIso(), $dEndDate->getIso(), $campaignKey, $this->_exportTransactionParameters['username'], $this->_exportTransactionParameters['password']);
 					}
 				}
 				foreach ($transactionList as $transactionObject) {
@@ -196,7 +215,7 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 						$transaction['merchantId'] = $transactionObject->programID;
 						$transactionDate = new Zend_Date($transactionObject->date, "yyyy-MM-ddTHH:mm:ss");
 						$transaction["date"] = $transactionDate->toString("yyyy-MM-dd HH:mm:ss");
-
+						$transaction['unique_id'] = $transactionObject->transactionID;
 						if ($transactionObject->clickRef != null) {
 							$transaction['custom_id'] = $transactionObject->clickRef;
 						}
@@ -205,17 +224,19 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 						$transaction['amount'] = $transactionObject->saleValue;
 						$transaction['commission'] = $transactionObject->commission;
 
-						if ($transactionObject->status == 'confirmed') {
+						if ($transactionObject->paymentStatus == 'cleared' || $transactionObject->paymentStatus == 'paid') {
 							$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
 						} else
-						if ($transactionObject->status == 'delayed') {
+						if ($transactionObject->paymentStatus == 'notcleared') {
 							$transaction['status'] = Oara_Utilities::STATUS_PENDING;
 						} else
-						if ($transactionObject->status == 'cancelled') {
+						if ($transactionObject->paymentStatus == 'cancelled') {
 							$transaction['status'] = Oara_Utilities::STATUS_DECLINED;
 						} else {
-							throw new Exception('Error in the transaction status');
+							throw new Exception('Error in the transaction status '. $transactionObject->paymentStatus);
 						}
+						$transaction['currency'] = $transactionObject->currency;
+						
 						$totalTransactions[] = $transaction;
 					}
 				}
@@ -223,83 +244,24 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 			}
 			return $totalTransactions;
 		}
-		/**
-		 * (non-PHPdoc)
-		 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId,$dStartDate,$dEndDate)
-		 */
-		public function getOverviewList($transactionList = array(), $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-			$totalOverviews = Array();
-			$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-			foreach ($transactionArray as $merchantId => $merchantTransaction) {
-				foreach ($merchantTransaction as $date => $transactionList) {
-
-					$overview = Array();
-
-					$overview['merchantId'] = $merchantId;
-					$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-					$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-					$overview['click_number'] = 0;
-					$overview['impression_number'] = 0;
-					$overview['transaction_number'] = 0;
-					$overview['transaction_confirmed_value'] = 0;
-					$overview['transaction_confirmed_commission'] = 0;
-					$overview['transaction_pending_value'] = 0;
-					$overview['transaction_pending_commission'] = 0;
-					$overview['transaction_declined_value'] = 0;
-					$overview['transaction_declined_commission'] = 0;
-					$overview['transaction_paid_value'] = 0;
-					$overview['transaction_paid_commission'] = 0;
-					foreach ($transactionList as $transaction) {
-						$overview['transaction_number']++;
-						if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-							$overview['transaction_confirmed_value'] += $transaction['amount'];
-							$overview['transaction_confirmed_commission'] += $transaction['commission'];
-						} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-							$overview['transaction_declined_value'] += $transaction['amount'];
-							$overview['transaction_declined_commission'] += $transaction['commission'];
-						} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-							$overview['transaction_paid_value'] += $transaction['amount'];
-							$overview['transaction_paid_commission'] += $transaction['commission'];
-						}
-					}
-					$totalOverviews[] = $overview;
-				}
-			}
-
-			return $totalOverviews;
-		}
 
 		/**
 		 * Get the campaings identifiers and returns it in an array.
 		 * @return array
 		 */
-		private function getCampaignMap() {
+		private function getCampaignMap($html) {
 			$campaingMap = array();
-			$urls = array();
-			$urls[] = new Oara_Curl_Request("http://{$this->_server}/affiliates/report.html?f=0&action=sf", array());
-			$exportReport = $this->_webClient->get($urls);
-			$matches = array();
-			if (preg_match("/<select name=\"campaignswitchid\" class=\"formelement\" style=\"width:134px\">([^\t]*)<\/select>/", $exportReport[0], $matches)) {
-
-				if (preg_match_all("/<option value=\"(.*)\" .*>(.*)<\/option>/", $matches[1], $matches)) {
-					$campaingNumber = count($matches[1]);
-					$i = 0;
-					while ($i < $campaingNumber) {
-						$campaingMap[$matches[1][$i]] = $matches[2][$i];
-						$i++;
-					}
-				} else {
-					throw new Exception('No campaigns found');
+			
+			$dom = new Zend_Dom_Query($html);
+			$results = $dom->query('select[name="campaignswitchid"]');
+			$merchantLines = $results->current()->childNodes;
+			for ($i = 0; $i < $merchantLines->length; $i++) {
+				$cid = $merchantLines->item($i)->attributes->getNamedItem("value")->nodeValue;
+				if (is_numeric($cid)){
+					$campaingMap[$cid] = $merchantLines->item($i)->nodeValue;
 				}
-
-			} else {
-				throw new Exception("No campaigns found");
+				
+				
 			}
 			return $campaingMap;
 		}
@@ -310,13 +272,12 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 		 */
 		public function getPaymentHistory() {
 			$paymentHistory = array();
-
+			/*
 			$urls = array();
 
 			$urls[] = new Oara_Curl_Request("https://{$this->_server}/affiliates/payment.html", array());
 			$exportReport = $this->_webClient->get($urls);
 
-			/*** load the html into the object ***/
 			$doc = new DOMDocument();
 			libxml_use_internal_errors(true);
 			$doc->validateOnParse = true;
@@ -361,7 +322,7 @@ class Oara_Network_Publisher_WebGains extends Oara_Network {
 				$obj['method'] = $registerLine->item(6)->nodeValue;
 				$paymentHistory[] = $obj;
 			}
-
+			*/
 			return $paymentHistory;
 		}
 }

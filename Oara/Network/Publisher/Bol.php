@@ -1,5 +1,23 @@
 <?php
-require_once realpath(dirname(__FILE__)).'/../../../PHPExcel.php';
+/**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
 /**
  * Export Class
  *
@@ -44,7 +62,7 @@ class Oara_Network_Publisher_Bol extends Oara_Network {
 		$urls[] = new Oara_Curl_Request('https://partnerprogramma.bol.com/partner/index.do?', array());
 		$exportReport = $this->_client->get($urls);
 
-		if (preg_match("/partner\/logout\.do/", $exportReport[0], $match)) {
+		if (preg_match('/partner\/logout\.do/', $exportReport[0], $match)) {
 			$connection = true;
 		}
 		return $connection;
@@ -69,113 +87,74 @@ class Oara_Network_Publisher_Bol extends Oara_Network {
 	 * @see library/Oara/Network/Oara_Network_Publisher_Interface#getTransactionList($aMerchantIds, $dStartDate, $dEndDate, $sTransactionStatus)
 	 */
 	public function getTransactionList($merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$folder = realpath(dirname(__FILE__)).'/../../data/pdf/';
+		$folder = realpath ( dirname ( COOKIES_BASE_DIR ) ) . '/pdf/';
 		$totalTransactions = array();
-		$dateArray = Oara_Utilities::daysOfDifference($dStartDate, $dEndDate);
-		for ($i = 0; $i < sizeof($dateArray); $i++) {
-			$valuesFromExport = array();
-			$valuesFromExport[] = new Oara_Curl_Parameter('id', "-1");			
-			$valuesFromExport[] = new Oara_Curl_Parameter('fromDate', $dateArray[$i]->toString("yyyy-MM-dd"));
-			$valuesFromExport[] = new Oara_Curl_Parameter('toDate', $dateArray[$i]->toString("yyyy-MM-dd"));
-			
-			
-
-			$urls = array();
-			$urls[] = new Oara_Curl_Request('https://partnerprogramma.bol.com/partner/affiliate/productOverview?', $valuesFromExport);
-			$exportReport = $this->_client->get($urls);
-			
-			$my_file = $folder.mt_rand().'.xlsx';
-			$handle = fopen($my_file, 'w') or die('Cannot open file:  '.$my_file);
-			$data = $exportReport[0];
-			fwrite($handle, $data);
-			fclose($handle);
-			
-			$objReader = PHPExcel_IOFactory::createReader('Excel2007');
-			$objReader->setReadDataOnly(true);
-			
-			$objPHPExcel = $objReader->load($my_file);
-			$objWorksheet = $objPHPExcel->getActiveSheet();
-			
-			$highestRow = $objWorksheet->getHighestRow(); 
-			$highestColumn = $objWorksheet->getHighestColumn(); 
-			
-			$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn); 
-			
-			for ($row = 2; $row <= $highestRow; ++$row) {
-
-			    $value =  $objWorksheet->getCellByColumnAndRow(3, $row)->getValue();
-			   	$commission = $objWorksheet->getCellByColumnAndRow(4, $row)->getValue();
-			    
-			    
-			    $transaction = Array();
-				$transaction['merchantId'] = "1";
-				$transaction['date'] = $dateArray[$i]->toString("yyyy-MM-dd HH:mm:ss");
-
-				$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
-				$transaction['amount'] = Oara_Utilities::parseDouble($value);
-				$transaction['commission'] = Oara_Utilities::parseDouble($commission);
-				$totalTransactions[] = $transaction;
-			    
-			}
-			unlink($my_file);
-		}
+		$valuesFromExport = array();
+		$valuesFromExport[] = new Oara_Curl_Parameter('id', "-1");			
+		$valuesFromExport[] = new Oara_Curl_Parameter('yearStart', $dStartDate->toString("yyyy"));
+		$valuesFromExport[] = new Oara_Curl_Parameter('monthStart', $dStartDate->toString("MM"));
+		$valuesFromExport[] = new Oara_Curl_Parameter('dayStart', $dStartDate->toString("dd"));
+		$valuesFromExport[] = new Oara_Curl_Parameter('yearEnd', $dEndDate->toString("yyyy"));
+		$valuesFromExport[] = new Oara_Curl_Parameter('monthEnd', $dEndDate->toString("MM"));
+		$valuesFromExport[] = new Oara_Curl_Parameter('dayEnd', $dEndDate->toString("dd"));
 		
+		$urls = array();
+		$urls[] = new Oara_Curl_Request('https://partnerprogramma.bol.com/partner/s/excelReport/orders?', $valuesFromExport);
+		$exportReport = $this->_client->get($urls);
+		
+		$my_file = $folder.mt_rand().'.xlsx';
+		$handle = fopen($my_file, 'w') or die('Cannot open file:  '.$my_file);
+		$data = $exportReport[0];
+		fwrite($handle, $data);
+		fclose($handle);
+		
+		$objReader = PHPExcel_IOFactory::createReader('Excel2007');
+		$objReader->setReadDataOnly(true);
+		
+		$objPHPExcel = $objReader->load($my_file);
+		$objWorksheet = $objPHPExcel->getActiveSheet();
+		
+		$highestRow = $objWorksheet->getHighestRow(); 
+		$highestColumn = $objWorksheet->getHighestColumn(); 
+		
+		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn); 
+		
+		for ($row = 2; $row <= $highestRow; ++$row) {
+
+		    
+		   	$transaction = Array();
+		   	$transaction['unique_id'] = $objWorksheet->getCellByColumnAndRow(0, $row)->getValue()."_".$objWorksheet->getCellByColumnAndRow(1, $row)->getValue();
+		   	$transaction['merchantId'] = "1";
+		   	
+		   	$transactionDate = new Zend_Date($objWorksheet->getCellByColumnAndRow(2, $row)->getValue(), 'dd-MM-yyyy');
+		   	$transaction['date'] = $transactionDate->toString("yyyy-MM-dd 00:00:00");
+		   	
+		   	$transaction['custom_id'] = $objWorksheet->getCellByColumnAndRow(8, $row)->getValue();
+		
+		   	
+		   	if ($objWorksheet->getCellByColumnAndRow(14, $row)->getValue() == 'geaccepteerd') {
+		   		$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
+		   	} else
+		   	if ($objWorksheet->getCellByColumnAndRow(14, $row)->getValue() == 'in behandeling') {
+		   		$transaction['status'] = Oara_Utilities::STATUS_PENDING;
+		   	} else
+		   	if ($objWorksheet->getCellByColumnAndRow(14, $row)->getValue() == 'geweigerd: klik te oud' || $objWorksheet->getCellByColumnAndRow(14, $row)->getValue() == 'geweigerd') {
+		   		$transaction['status'] = Oara_Utilities::STATUS_DECLINED;
+		   	} else {
+		   		echo "new status ".$objWorksheet->getCellByColumnAndRow(14, $row)->getValue();
+		   	}
+		   	
+		   	$transaction['amount'] = $objWorksheet->getCellByColumnAndRow(11, $row)->getValue();
+		   	
+		   	$transaction['commission'] = $objWorksheet->getCellByColumnAndRow(12, $row)->getValue();
+		   	$totalTransactions[] = $transaction;
+		    
+		}
+		unlink($my_file);
 
 		return $totalTransactions;
 	}
-
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$overviewArray = Array();
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-								$overview['transaction_declined_value'] += $transaction['amount'];
-								$overview['transaction_declined_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-									$overview['transaction_paid_value'] += $transaction['amount'];
-									$overview['transaction_paid_commission'] += $transaction['commission'];
-								}
-				}
-				$overviewArray[] = $overview;
-			}
-		}
-
-		return $overviewArray;
-	}
+	
 	/**
 	 * (non-PHPdoc)
 	 * @see Oara/Network/Oara_Network_Publisher_Base#getPaymentHistory()

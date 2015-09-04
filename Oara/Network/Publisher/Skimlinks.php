@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -10,92 +29,65 @@
  */
 class Oara_Network_Publisher_Skimlinks extends Oara_Network {
 	/**
-	 * Export Merchants Parameters
-	 * @var array
+	 * Public API Key
+	 * @var string
 	 */
-	private $_exportMerchantParameters = null;
+	private $_publicapikey = null;
 	/**
-	 * Export Transaction Parameters
-	 * @var array
+	 * Private API Key
+	 * @var string
 	 */
-	private $_exportTransactionParameters = null;
-	/**
-	 * Export Overview Parameters
-	 * @var array
-	 */
-	private $_exportOverviewParameters = null;
-	/**
-	 * Export Payment Parameters
-	 * @var array
-	 */
-	private $_exportPaymentParameters = null;
-	/**
-	 * Client
-	 * @var unknown_type
-	 */
-	private $_client = null;
+	private $_privateapikey = null;
+
 	/**
 	 * Constructor and Login
 	 * @param $credentials
 	 * @return Oara_Network_Publisher_Daisycon
 	 */
 	public function __construct($credentials) {
-		$user = $credentials['user'];
-		$password = $credentials['password'];
 
-		$valuesLogin = array(
-			new Oara_Curl_Parameter('username', $user),
-			new Oara_Curl_Parameter('password', $password),
-			new Oara_Curl_Parameter('menu', "{ return }"),
-			new Oara_Curl_Parameter('btn-login', "Login")
-		);
-		
+		$dir = COOKIES_BASE_DIR . DIRECTORY_SEPARATOR . $credentials ['cookiesDir'] . DIRECTORY_SEPARATOR . $credentials ['cookiesSubDir'] . DIRECTORY_SEPARATOR;
 
-		$loginUrl = 'https://hub.skimlinks.com/login';
-		$this->_client = new Oara_Curl_Access($loginUrl, array(), $credentials);
-		
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('https://hub.skimlinks.com/login', $valuesLogin);
-		$exportReport = $this->_client->post($urls);
+		if (! Oara_Utilities::mkdir_recursive ( $dir, 0777 )) {
+			throw new Exception ( 'Problem creating folder in Access' );
+		}
 
-		$this->_exportTransactionParameters = array(new Oara_Curl_Parameter('type', 'merchant'),
-			new Oara_Curl_Parameter('export', 'csv'),
-			new Oara_Curl_Parameter('domain', '0'),
-			new Oara_Curl_Parameter('merchant', '-2'),
-			new Oara_Curl_Parameter('product', '1')
-		);
-
-		$this->_exportOverviewParameters = array(new Oara_Curl_Parameter('type', 'merchant'),
-			new Oara_Curl_Parameter('export', 'csv'),
-			new Oara_Curl_Parameter('domain', '0'),
-			new Oara_Curl_Parameter('merchant', '-2'),
-			new Oara_Curl_Parameter('product', '1')
+		$cookies = $dir . $credentials["cookieName"] . '_cookies.txt';
+		@unlink($cookies);
+		$this->_options = array (
+				CURLOPT_USERAGENT => "Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:26.0) Gecko/20100101 Firefox/26.0",
+				CURLOPT_RETURNTRANSFER => true,
+				CURLOPT_FAILONERROR => true,
+				CURLOPT_COOKIEJAR => $cookies,
+				CURLOPT_COOKIEFILE => $cookies,
+				CURLOPT_HTTPAUTH => CURLAUTH_ANY,
+				CURLOPT_AUTOREFERER => true,
+				CURLOPT_SSL_VERIFYPEER => false,
+				CURLOPT_SSL_VERIFYHOST => false,
+				CURLOPT_HEADER => false,
+				CURLOPT_FOLLOWLOCATION => true,
+				CURLOPT_HTTPHEADER => array('Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8','Accept-Language: es,en-us;q=0.7,en;q=0.3','Accept-Encoding: gzip, deflate','Connection: keep-alive', 'Cache-Control: max-age=0'),
+				CURLOPT_ENCODING => "gzip",
+				CURLOPT_VERBOSE => false
 		);
 
-		$this->_exportPaymentParameters = array();
+		$this->_publicapikey =  $credentials['user'];
+		$this->_privateapikey = $credentials['apiPassword'];
 
 	}
 	/**
 	 * Check the connection
 	 */
 	public function checkConnection() {
-		//If not login properly the construct launch an exception
 		$connection = false;
-		
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('https://hub.skimlinks.com/go/full', array());
-		$exportReport = $this->_client->get($urls);
-		
-		
-		
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('https://accounts.skimlinks.com/', array());
-		$exportReport = $this->_client->get($urls);
-		$dom = new Zend_Dom_Query($exportReport[0]);
-		$results = $dom->query('a[href*="kilep="]');
-		if (count($results) > 0) {
+
+		try{
+			self::getMerchantList();
 			$connection = true;
+		} catch (Exception $e){
+
 		}
+
 		return $connection;
 	}
 	/**
@@ -103,24 +95,84 @@ class Oara_Network_Publisher_Skimlinks extends Oara_Network {
 	 * @see library/Oara/Network/Oara_Network_Publisher_Interface#getMerchantList()
 	 */
 	public function getMerchantList() {
-		$merchants = array();
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('https://accounts.skimlinks.com/reports&report=daily', array());
-		$exportReport = $this->_client->get($urls);
-		$dom = new Zend_Dom_Query($exportReport[0]);
-		$merchantList = $dom->query('#merchant_select');
-		$merchantList = $merchantList->current();
-		if ($merchantList != null) {
-			$merchantLines = $merchantList->childNodes;
-			for ($i = 0; $i < $merchantLines->length; $i++) {
-				if ($merchantLines->item($i)->getAttribute("value") > 0) {
-					$obj = array();
-					$obj['cid'] = $merchantLines->item($i)->getAttribute("value");
-					$obj['name'] = $merchantLines->item($i)->nodeValue;
-					$merchants[] = $obj;
-				}
-			}
+
+		$publicapikey = $this->_publicapikey;
+		$privateapikey = $this->_privateapikey;
+
+		$date = new DateTime();
+		$timestamp = $date->getTimestamp();
+		$authtoken = md5( $timestamp . $privateapikey );
+		$date = Zend_Date::now();
+
+		$merchants = Array ();
+
+		$valuesFromExport = array(
+				new Oara_Curl_Parameter('version', '0.5'),
+				new Oara_Curl_Parameter('timestamp', $timestamp),
+				new Oara_Curl_Parameter('apikey', $publicapikey),
+				new Oara_Curl_Parameter('authtoken', $authtoken),
+				new Oara_Curl_Parameter('startdate', '2009-01-01'), //minimum date
+				new Oara_Curl_Parameter('enddate', $date->toString("yyyy-MM-dd")),
+				new Oara_Curl_Parameter('format', 'json')
+		);
+
+		$rch = curl_init ();
+		$options = $this->_options;
+		$arg = array ();
+		foreach ( $valuesFromExport as $parameter ) {
+			$arg [] = $parameter->getKey () . '=' . urlencode ( $parameter->getValue () );
 		}
+		curl_setopt ( $rch, CURLOPT_URL, 'https://api-reports.skimlinks.com/publisher/reportmerchants?'.implode ( '&', $arg ) );
+
+		curl_setopt_array ( $rch, $options );
+		$json = curl_exec ( $rch );
+		curl_close ( $rch );
+
+		$jsonArray = json_decode($json, true);
+
+		$iteration = 0;
+		while (count($jsonArray["skimlinksAccount"]["merchants"]) != 0){
+
+			foreach ($jsonArray["skimlinksAccount"]["merchants"] as $i){
+				$obj = Array();
+				$obj['cid']  = $i["merchantID"];
+				$obj['name'] = $i["merchantName"];
+				$merchants[] = $obj;
+			}
+
+			$iteration++;
+
+			$valuesFromExport = array(
+					new Oara_Curl_Parameter('version', '0.5'),
+					new Oara_Curl_Parameter('timestamp', $timestamp),
+					new Oara_Curl_Parameter('apikey', $publicapikey),
+					new Oara_Curl_Parameter('authtoken', $authtoken),
+					new Oara_Curl_Parameter('startdate', '2009-01-01'), //minimum date
+					new Oara_Curl_Parameter('enddate', $date->toString("yyyy-MM-dd")),
+					new Oara_Curl_Parameter('format', 'json'),
+					new Oara_Curl_Parameter('responseFrom', $iteration*100),
+
+			);
+
+			$rch = curl_init ();
+			$options = $this->_options;
+			$arg = array ();
+			foreach ( $valuesFromExport as $parameter ) {
+				$arg [] = $parameter->getKey () . '=' . urlencode ( $parameter->getValue () );
+			}
+			curl_setopt ( $rch, CURLOPT_URL, 'https://api-reports.skimlinks.com/publisher/reportmerchants?'.implode ( '&', $arg ) );
+
+			curl_setopt_array ( $rch, $options );
+			$json = curl_exec ( $rch );
+			curl_close ( $rch );
+
+			$jsonArray = json_decode($json, true);
+
+
+		}
+
+
+
 		return $merchants;
 	}
 
@@ -131,99 +183,66 @@ class Oara_Network_Publisher_Skimlinks extends Oara_Network {
 	public function getTransactionList($merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
 
 		$totalTransactions = array();
-		$mothUrls = array();
-		$dateArray = Oara_Utilities::daysOfDifference($dStartDate, $dEndDate);
-		$dateArraySize = sizeof($dateArray);
-		for ($i = 0; $i < $dateArraySize; $i++) {
-			$valuesFormExport = Oara_Utilities::cloneArray($this->_exportTransactionParameters);
-			$valuesFormExport[] = new Oara_Curl_Parameter('datefrom', $dateArray[$i]->toString("yyyy-MM-dd"));
-			$valuesFormExport[] = new Oara_Curl_Parameter('dateto', $dateArray[$i]->toString("yyyy-MM-dd"));
-			$mothUrls[] = new Oara_Curl_Request('https://accounts.skimlinks.com/reports_export.php?', $valuesFormExport);
+
+		$publicapikey = $this->_publicapikey;
+		$privateapikey = $this->_privateapikey;
+
+		$date = new DateTime();
+		$timestamp = $date->getTimestamp();
+		$authtoken = md5( $timestamp . $privateapikey );
+		$date = Zend_Date::now();
+
+		$valuesFromExport = array(
+				new Oara_Curl_Parameter('version', '0.5'),
+				new Oara_Curl_Parameter('timestamp', $timestamp),
+				new Oara_Curl_Parameter('apikey', $publicapikey),
+				new Oara_Curl_Parameter('authtoken', $authtoken),
+				new Oara_Curl_Parameter('startDate', $dStartDate->toString("yyyy-MM-dd")),
+				new Oara_Curl_Parameter('endDate', $dEndDate->toString("yyyy-MM-dd")),
+				new Oara_Curl_Parameter('format', 'json')
+		);
+
+		$rch = curl_init ();
+		$options = $this->_options;
+		$arg = array ();
+		foreach ( $valuesFromExport as $parameter ) {
+			$arg [] = $parameter->getKey () . '=' . urlencode ( $parameter->getValue () );
 		}
-		$exportReport = $this->_client->get($mothUrls);
-		$exportReportNumber = count($exportReport);
-		for ($i = 0; $i < $exportReportNumber; $i++) {
-			$exportData = str_getcsv($exportReport[$i], "\n");
-			$num = count($exportData);
-			for ($j = 1; $j < $num - 5; $j++) {
-				$transactionExportArray = str_getcsv($exportData[$j], ",");
-				$revenue = 0;
-				if (preg_match("/[-+]?[0-9]*,?[0-9]*\.?[0-9]+/", $transactionExportArray[6], $matches)) {
-					$revenue = Oara_Utilities::parseDouble($matches[0]);
-				}
-				if ($revenue != 0 && isset($merchantMap[$transactionExportArray[0]]) && in_array($merchantMap[$transactionExportArray[0]], $merchantList)) {
+		curl_setopt ( $rch, CURLOPT_URL, 'https://api-report.skimlinks.com/publisher/reportcommissions?'.implode ( '&', $arg ) );
 
-					$transaction = Array();
-					$transaction['merchantId'] = $merchantMap[$transactionExportArray[0]];
-					$transactionDateString = $mothUrls[$i]->getParameter(5)->getValue();
-					$transaction['date'] = $transactionDateString;
+		curl_setopt_array ( $rch, $options );
+		$json = curl_exec ( $rch );
+		curl_close ( $rch );
 
-					$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
+		$jsonArray = json_decode($json, true);
 
-					if (preg_match("/[-+]?[0-9]*,?[0-9]*\.?[0-9]+/", $transactionExportArray[3], $matches)) {
-						$transaction['amount'] = Oara_Utilities::parseDouble($matches[0]);
-					}
-					$transaction['commission'] = $revenue;
-					$totalTransactions[] = $transaction;
-				}
+		foreach ($jsonArray["skimlinksAccount"]["commissions"] as $i){
+			$transaction = Array();
+
+			$transaction['merchantId'] = $i["merchantID"];
+			$transaction['unique_id'] =  $i["commissionID"];
+			$transactionDate = new Zend_Date($i["date"], 'YYYY-MM-DD', 'en');
+			$transaction['date'] = $transactionDate->toString("yyyy-MM-dd HH:mm:ss");
+			$transaction['amount'] = (double)$i["orderValue"]/100;
+			$transaction['commission'] = (double)$i["commissionValue"]/100;
+			$transactionStatus = $i["status"];
+			if ($transactionStatus == "active") {
+				$transaction ['status'] = Oara_Utilities::STATUS_CONFIRMED;
+			} else if ($transactionStatus == "cancelled") {
+				$transaction ['status'] = Oara_Utilities::STATUS_DECLINED;
+			} else {
+				throw new Exception ( "New status found {$transactionStatus}" );
 			}
+			if ($i["customID"] != null) {
+				$transaction['custom_id'] = $i["customID"];
+			}
+
+			$totalTransactions[] = $transaction;
 		}
 
 		return $totalTransactions;
 	}
 
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$overviewArray = array();
-
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-								$overview['transaction_declined_value'] += $transaction['amount'];
-								$overview['transaction_declined_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-									$overview['transaction_paid_value'] += $transaction['amount'];
-									$overview['transaction_paid_commission'] += $transaction['commission'];
-								}
-				}
-				$overviewArray[] = $overview;
-			}
-		}
-		return $overviewArray;
-	}
 	/**
 	 * (non-PHPdoc)
 	 * @see Oara/Network/Oara_Network_Publisher_Base#getPaymentHistory()
@@ -232,50 +251,6 @@ class Oara_Network_Publisher_Skimlinks extends Oara_Network {
 		$paymentHistory = array();
 
 		return $paymentHistory;
-	}
-	/**
-	 *
-	 * Function that Convert from a table to Csv
-	 * @param unknown_type $html
-	 */
-	private function htmlToCsv($html) {
-		$html = str_replace(array("\t", "\r", "\n"), "", $html);
-		$csv = "";
-		$dom = new Zend_Dom_Query($html);
-		$results = $dom->query('tr');
-		$count = count($results); // get number of matches: 4
-		foreach ($results as $result) {
-			$tdList = $result->childNodes;
-			$tdNumber = $tdList->length;
-			if ($tdNumber > 0) {
-				for ($i = 0; $i < $tdNumber; $i++) {
-					$value = $tdList->item($i)->nodeValue;
-					if ($i != $tdNumber - 1) {
-						$csv .= trim($value).";";
-					} else {
-						$csv .= trim($value);
-					}
-				}
-				$csv .= "\n";
-			}
-		}
-		$exportData = str_getcsv($csv, "\n");
-		return $exportData;
-	}
-	/**
-	 *
-	 * Function that returns the innet HTML code
-	 * @param unknown_type $element
-	 */
-	private function DOMinnerHTML($element) {
-		$innerHTML = "";
-		$children = $element->childNodes;
-		foreach ($children as $child) {
-			$tmp_dom = new DOMDocument();
-			$tmp_dom->appendChild($tmp_dom->importNode($child, true));
-			$innerHTML .= trim($tmp_dom->saveHTML());
-		}
-		return $innerHTML;
 	}
 
 }

@@ -15,6 +15,15 @@ and additional analysis tools.
 Development is sponsored by [AffJet](http://www.affjet.com) but we welcome 
 code contributions from anyone. 
 
+License
+-------
+PHP-OARA is available under a dual license model; either AGPL or a commercial license, depending on your requirements. If you wish to use php-oara in an open source project, or one for internal use only then you can choose the AGPL. If you wish to use php-oara in a commercial project that will be available to external users, then you should contact us for a commercial license.
+
+This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License (LICENSE.TXT).
+ 
+If you are interested in being a contributor to this project we encourage to read, fill and send this file (FubraLimited-ContributorLicenseAgreement.docx) to support@fubra.com.
+
 Networks Supported
 -------
 
@@ -70,6 +79,22 @@ The list of supported networks for Publishers so far is:
 * [PepperJam Network / eBay Enterprise Affiliate Network](http://www.pepperjamnetwork.com)
 * [HideMyAss](http://www.hidemyass.com)
 * [PureVPN](http://www.purevpn.com)
+* [MyPcBackUp](http://affiliates.mypcbackup.com)
+* [BtGuard](https://affiliate.btguard.com)
+* [PaddyPartners](http://affiliates.paddypartners.com)
+* [WinnerAffiliates](https://www.winneraffiliates.com/)
+* [Google Android Publisher](https://play.google.com/store)
+* [iTunes Connect](https://itunesconnect.apple.com)
+* [Mall.cz](http://affiliate.mall.cz/pan/public/)
+* [PostAffiliatePro](http://www.postaffiliatepro.com/)
+* [Avantlink.ca](http://www.avantlink.ca)
+* [Skyscanner](http://www.skyscanneraffiliate.net/portal/en-GB/UK/Home/LogOn)
+* [SkyParkSecure](http://agents.skyparksecure.com)
+* [ParkAndGo](http://www.parkandgo.co.uk)
+* [RentalCars](http://www.rentalcars.com)
+* [CommissionFactory AU](http://www.commissionfactory.com.au/)
+* [HasOffers](http://www.hasoffers.com/)
+
 
 The list of supported networks for Advertisers so far is:
 
@@ -114,7 +139,9 @@ for the different networks.
 
 
 
-
+PHP OARA on Composer
+-----------
+You can use the package "fubralimited/php-oara" from composer instead to import the library.
 
 
 Contributing
@@ -146,7 +173,6 @@ please pay attention to the next rules:
 	* checkConnection
 	* getMerchantList
 	* getTransactionList
-	* getOverviewList
 	* getPaymentHistory
 	* paymentTransactions
 	
@@ -183,20 +209,6 @@ Gets the transactions for the network, from the "dStartDate" until "dEndDate" fo
 
 * return Array ( Array of Transactions )
 
-### getOverviewList($transactionList, $merchantList, Zend_Date $dStartDate, Zend_Date $dEndDate, array $merchantMap)
-Gets the overview (a daily summary  of our statistics) for the network and the merchants selected for the date given
-
-* @param array $transactionList - Transaction List
-
-* @param array $merchantList - array with the merchants we want to retrieve the data from
-
-* @param Zend_Date $dStartDate - start date (included)
-
-* @param Zend_Date $dEndDate - end date (included)
-
-* @param array $merchantMap - array with the merchants indexed by name, only in case we can't get the merchant id in the transaction report, we may need to link it by name.
-
-* return Array ( Array of Overview )
 
 ### getPaymentHistory()
 Gets the Payments already done for this network
@@ -249,37 +261,6 @@ It's an array with the following keys:
 * unique_id - Unique id for the transaction (string)
 * custom_id - Custom id (or sub id) for the transaction (string), custom param you put on your links to see the performance or who made the sale.
 
-
-Overview 
-------------
-
-It's an array with the following keys:
-
-* merchantId (not null) - Merchant's unique id
-
-* date (not null) - Transaction date format, "2011-06-26 18:10:10"
-
-* click_number (not null) - The number (int) of clicks for this date for this merchant, link and website 
-
-* impression_number (not null) - The number (int) of impressions for this date for this merchant, link and website 
-
-* transaction_number (not null) - The number (int) of transactions for this date for this merchant, link and website 
-
-* transaction_confirmed_value (not null) -  Transaction value  (double) with status confirmed 
-
-* transaction_confirmed_commission (not null) -  Transaction commission  (double) with status confirmed 
-
-* transaction_pending_value (not null) - Transaction value  (double) with status pending 
-
-* transaction_pending_commission (not null) -  Transaction commission  (double) with status pending 
-
-* transaction_declined_value (not null) -  Transaction value  (double) with status declined 
-
-* transaction_declined_commission (not null) -  Transaction commission  (double) with status declined 
-
-* transaction_paid_value (not null) -  Transaction value  (double) with status paid 
-
-* transaction_paid_commission (not null) -  Transaction commission  (double) with status paid 
 
 Payment 
 ------------

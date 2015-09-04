@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Api Class
  *
  * @author     Carlos Morillo Merino
@@ -8,6 +27,9 @@
  * @version    Release: 01.00
  *
  */
+
+require "Zanox/Zapi/ApiClient.php";
+
 class Oara_Network_Publisher_Zanox extends Oara_Network {
 	/**
 	 * Soap client.
@@ -26,15 +48,15 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 	 */
 	public function __construct($credentials) {
 
-		$api = Oara_Network_Publisher_Zanox_Zapi_ApiClient::factory(PROTOCOL_SOAP, VERSION_2011_03_01);
+		$api = ApiClient::factory(PROTOCOL_SOAP, VERSION_2011_03_01);
 
 		$connectId = $credentials['connectId'];
 		$secretKey = $credentials['secretKey'];
-		$publicKey = $credentials['publicKey'];
+		//$publicKey = $credentials['publicKey'];
 
 		$api->setConnectId($connectId);
 		$api->setSecretKey($secretKey);
-		$api->setPublicKey($publicKey);
+		//$api->setPublicKey($publicKey);
 
 		$this->_apiClient = $api;
 
@@ -97,11 +119,13 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 		$dateArray = Oara_Utilities::daysOfDifference($dStartDate, $dEndDate);
 		foreach ($dateArray as $date) {
 			$totalAuxTransactions = array();
-			$transactionList = $this->_apiClient->getSales($date->toString("yyyy-MM-dd"), 'trackingDate', null, null, null, 0, $this->_pageSize);
+			$transactionList = $this->getSales($date->toString("yyyy-MM-dd"), 0, $this->_pageSize);
+			
 			if ($transactionList->total > 0) {
 				$iteration = self::calculeIterationNumber($transactionList->total, $this->_pageSize);
-				for ($i = 0; $i < $iteration; $i++) {
-					$transactionList = $this->_apiClient->getSales($date->toString("yyyy-MM-dd"), 'trackingDate', null, null, null, $i, $this->_pageSize);
+				$totalAuxTransactions = array_merge($totalAuxTransactions, $transactionList->saleItems->saleItem);
+				for ($i = 1; $i < $iteration; $i++) {
+					$transactionList = $this->getSales($date->toString("yyyy-MM-dd"), $i, $this->_pageSize);
 					$totalAuxTransactions = array_merge($totalAuxTransactions, $transactionList->saleItems->saleItem);
 					unset($transactionList);
 					gc_collect_cycles();
@@ -111,7 +135,8 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 			$leadList = $this->_apiClient->getLeads($date->toString("yyyy-MM-dd"), 'trackingDate', null, null, null, 0, $this->_pageSize);
 			if ($leadList->total > 0) {
 				$iteration = self::calculeIterationNumber($leadList->total, $this->_pageSize);
-				for ($i = 0; $i < $iteration; $i++) {
+				$totalAuxTransactions = array_merge($totalAuxTransactions, $leadList->leadItems->leadItem );
+				for ($i = 1; $i < $iteration; $i++) {
 					$leadList = $this->_apiClient->getLeads($date->toString("yyyy-MM-dd"), 'trackingDate', null, null, null, $i, $this->_pageSize);
 					$totalAuxTransactions = array_merge($totalAuxTransactions, $leadList->leadItems->leadItem );
 					unset($leadList);
@@ -121,7 +146,7 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 
 			foreach ($totalAuxTransactions as $transaction) {
 
-				if (in_array($transaction->program->id, $merchantList)) {
+				if ($merchantList == null || in_array($transaction->program->id, $merchantList)) {
 					$obj = array();
 					
 					$obj['currency'] = $transaction->currency;
@@ -156,6 +181,7 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 					$transactionDate = new Zend_Date($transaction->trackingDate, "yyyy-MM-dd HH:mm:ss");
 					$obj['date'] = $transactionDate->toString("yyyy-MM-dd HH:mm:ss");
 					$obj['merchantId'] = $transaction->program->id;
+					$obj['approved'] = $transaction->reviewState == 'approved' ? true : false;
 					$totalTransactions[] = $obj;
 				}
 
@@ -165,118 +191,7 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 		}
 		return $totalTransactions;
 	}
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId,$dStartDate,$dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$totalOverview = Array();
-		//At first, we need to be sure that there are some data.
-		$auxStartDate = clone $dStartDate;
-		$auxStartDate->setHour("00");
-		$auxStartDate->setMinute("00");
-		$auxStartDate->setSecond("00");
-		$auxEndDate = clone $dEndDate;
-		$auxEndDate->setHour("23");
-		$auxEndDate->setMinute("59");
-		$auxEndDate->setSecond("59");
-		$auxEndDate->addDay(1);
-
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		foreach ($merchantList as $merchantId) {
-			$overviewList = $this->_apiClient->getReportBasic($auxStartDate->toString("yyyy-MM-dd"), $auxEndDate->toString("yyyy-MM-dd"), 'trackingDate', null, $merchantId, null, null, null, null, array('day'));
-			if ($overviewList->total > 0) {
-				foreach ($overviewList->reportItems->reportItem as $overview) {
-					$obj = array();
-					$obj['merchantId'] = $merchantId;
-					$overviewDate = new Zend_Date($overview->day, "yyyy-MM-dd");
-					$obj['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-
-					$obj['impression_number'] = $overview->total->viewCount;
-					$obj['click_number'] = $overview->total->clickCount;
-					$obj['transaction_number'] = 0;
-
-					$obj['transaction_confirmed_commission'] = 0;
-					$obj['transaction_confirmed_value'] = 0;
-					$obj['transaction_pending_commission'] = 0;
-					$obj['transaction_pending_value'] = 0;
-					$obj['transaction_declined_commission'] = 0;
-					$obj['transaction_declined_value'] = 0;
-					$obj['transaction_paid_value'] = 0;
-					$obj['transaction_paid_commission'] = 0;
-					$transactionDateArray = Oara_Utilities::getDayFromArray($obj['merchantId'], $transactionArray, $overviewDate, true);
-					foreach ($transactionDateArray as $transaction) {
-						$obj['transaction_number']++;
-						if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-							$obj['transaction_confirmed_value'] += $transaction['amount'];
-							$obj['transaction_confirmed_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-								$obj['transaction_pending_value'] += $transaction['amount'];
-								$obj['transaction_pending_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-									$obj['transaction_declined_value'] += $transaction['amount'];
-									$obj['transaction_declined_commission'] += $transaction['commission'];
-								} else
-									if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-										$obj['transaction_paid_value'] += $transaction['amount'];
-										$obj['transaction_paid_commission'] += $transaction['commission'];
-									}
-					}
-					if (Oara_Utilities::checkRegister($obj)) {
-						$totalOverview[] = $obj;
-					}
-				}
-			}
-			unset($overviewList);
-			gc_collect_cycles();
-		}
-
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-								$overview['transaction_declined_value'] += $transaction['amount'];
-								$overview['transaction_declined_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-									$overview['transaction_paid_value'] += $transaction['amount'];
-									$overview['transaction_paid_commission'] += $transaction['commission'];
-								}
-				}
-				$totalOverview[] = $overview;
-			}
-		}
-		return $totalOverview;
-	}
+	
 	/**
 	 * (non-PHPdoc)
 	 * @see Oara/Network/Oara_Network_Publisher_Base#getPaymentHistory()
@@ -284,6 +199,7 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 
 	public function getPaymentHistory() {
 		$paymentHistory = array();
+		/*
 		$paymentList = $this->_apiClient->getPayments(0, $this->_pageSize);
 
 		if ($paymentList->total > 0) {
@@ -303,7 +219,23 @@ class Oara_Network_Publisher_Zanox extends Oara_Network {
 				}
 			}
 		}
+		*/
 		return $paymentHistory;
+	}
+	
+	private function getSales($date, $page, $pageSize, $iteration = 0){
+		$transactionList = array();
+		try{
+			$transactionList = $this->_apiClient->getSales($date, 'trackingDate', null, null, null, $page, $pageSize, $iteration);
+		} catch (Exception $e){
+			$iteration++;
+			if ($iteration < 5){
+				$transactionList = self::getSales($date, $page, $pageSize, $iteration);
+			}
+			
+		}
+		return $transactionList;
+		
 	}
 
 	/**

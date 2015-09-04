@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Api Class
  *
  * @author     Carlos Morillo Merino
@@ -79,7 +98,7 @@ class Oara_Network_Publisher_TradeTracker extends Oara_Network {
 		$affiliateSitesList = $this->_apiClient->getAffiliateSites();
 		foreach ($affiliateSitesList as $affiliateSite) {
 			foreach ($this->_apiClient->getConversionTransactions($affiliateSite->ID, $options) as $transaction) {
-				if (in_array((int) $transaction->campaign->ID, $merchantList)) {
+				if ($merchantList == null || in_array((int) $transaction->campaign->ID, $merchantList)) {
 					$object = array();
 
 					$object['unique_id'] = $transaction->ID;
@@ -110,116 +129,6 @@ class Oara_Network_Publisher_TradeTracker extends Oara_Network {
 		}
 
 		return $totalTransactions;
-	}
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId,$dStartDate,$dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$totalOverview = Array();
-
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		$dateArray = Oara_Utilities::daysOfDifference($dStartDate, $dEndDate);
-		$affiliateSitesList = $this->_apiClient->getAffiliateSites();
-		for ($i = 0; $i < sizeof($dateArray); $i++) {
-			$auxStartDate = $dateArray[$i];
-			$options = array('dateFrom'	 => $auxStartDate->toString("yyyy-MM-dd"),
-				'dateTo'	 => $auxStartDate->toString("yyyy-MM-dd"),
-			);
-			foreach ($affiliateSitesList as $affiliateSite) {
-				foreach ($this->_apiClient->getReportCampaign($affiliateSite->ID, $options) as $report) {
-
-					if (in_array((int) $report->campaign->ID, $merchantList)) {
-
-						$overview = Array();
-
-						$overview['merchantId'] = $report->campaign->ID;
-						$overview['date'] = $auxStartDate->toString("yyyy-MM-dd");
-
-						$overview['click_number'] = (int) $report->reportData->overallClickCount;
-						$overview['impression_number'] = (int) $report->reportData->overallImpressionCount;
-						$overview['transaction_number'] = 0;
-						$overview['transaction_confirmed_value'] = 0;
-						$overview['transaction_confirmed_commission'] = 0;
-						$overview['transaction_pending_value'] = 0;
-						$overview['transaction_pending_commission'] = 0;
-						$overview['transaction_declined_value'] = 0;
-						$overview['transaction_declined_commission'] = 0;
-						$overview['transaction_paid_value'] = 0;
-						$overview['transaction_paid_commission'] = 0;
-						$transactionDateArray = Oara_Utilities::getDayFromArray($report->campaign->ID, $transactionArray, $auxStartDate, true);
-						foreach ($transactionDateArray as $transaction) {
-							$overview['transaction_number']++;
-							if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-								$overview['transaction_confirmed_value'] += $transaction['amount'];
-								$overview['transaction_confirmed_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-									$overview['transaction_pending_value'] += $transaction['amount'];
-									$overview['transaction_pending_commission'] += $transaction['commission'];
-								} else
-									if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-										$overview['transaction_declined_value'] += $transaction['amount'];
-										$overview['transaction_declined_commission'] += $transaction['commission'];
-									} else
-										if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-											$overview['transaction_paid_value'] += $transaction['amount'];
-											$overview['transaction_paid_commission'] += $transaction['commission'];
-										}
-						}
-						if (Oara_Utilities::checkRegister($overview)) {
-							$totalOverview[] = $overview;
-						}
-					}
-				}
-			}
-		}
-
-		//get the transactions that left
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-								$overview['transaction_declined_value'] += $transaction['amount'];
-								$overview['transaction_declined_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-									$overview['transaction_paid_value'] += $transaction['amount'];
-									$overview['transaction_paid_commission'] += $transaction['commission'];
-								}
-				}
-				$totalOverviews[] = $overview;
-			}
-		}
-
-		return $totalOverview;
 	}
 
 	/**

@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -87,64 +106,38 @@ class Oara_Network_Publisher_TerraVision extends Oara_Network {
 	 */
 	public function getTransactionList($merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
 		$totalTransactions = Array();
+		
+		$stringToFind = $dStartDate->toString("MMMM yyyy");
+		
+		$urls = array();
+		$urls[] = new Oara_Curl_Request('http://book.terravision.eu/partner/my/payments', array());
+		$exportReport = $this->_client->get($urls);
+		/*** load the html into the object ***/
+		$dom = new Zend_Dom_Query($exportReport[0]);
+		$results = $dom->query('#navigation > table');
+		$exportData = self::htmlToCsv(self::DOMinnerHTML($results->current()));
+		$num = count($exportData);
+		
+		
+		for ($i = 1; $i < $num - 1; $i++) {
+			$transactionArray = str_getcsv($exportData[$i], ";");
+			if ($transactionArray[0] == $stringToFind){
+				
+				$transaction = array();
+				$transaction['merchantId'] = 1;
+				$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
+					
+				$transaction['date'] = $dEndDate->toString("yyyy-MM-dd HH:mm:ss");
+		
+				$transaction['amount'] = Oara_Utilities::parseDouble ( preg_replace ( '/[^0-9\.,]/', "", $transactionArray [2] ) );
+				$transaction['commission'] = Oara_Utilities::parseDouble ( preg_replace ( '/[^0-9\.,]/', "", $transactionArray [2] ) );
+		
+				$totalTransactions[] = $transaction;
+			}
+		}
 
 		return $totalTransactions;
 
-	}
-
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$totalOverviews = Array();
-
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('http://book.terravision.eu/partner/my/stats', array());
-		$exportReport = $this->_client->get($urls);
-		$dom = new Zend_Dom_Query($exportReport[0]);
-		$results = $dom->query('input[name="form[_token]"]');
-		$token = null;
-		foreach ($results as $result) {
-			$token = $result->getAttribute("value");
-		}
-
-		$valuesFormExport = array();
-		$valuesFormExport[] = new Oara_Curl_Parameter('form[year]', $dStartDate->toString("yyyy"));
-		$valuesFormExport[] = new Oara_Curl_Parameter('fform[_token]', $token);
-		$valuesFormExport[] = new Oara_Curl_Parameter('show', 'Show');
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('http://book.terravision.eu/partner/my/stats?', $valuesFormExport);
-		$exportReport = $this->_client->post($urls);
-
-		$stringToFind = $dStartDate->toString("MM-yyyy");
-		/*** load the html into the object ***/
-		$dom = new Zend_Dom_Query($exportReport[0]);
-		$results = $dom->query('.frame > table');
-		$exportData = self::htmlToCsv(self::DOMinnerHTML($results->current()));
-		$num = count($exportData);
-		for ($i = 1; $i < $num - 1; $i++) {
-			$overviewExportArray = str_getcsv($exportData[$i], ";");
-			if ($overviewExportArray[0] == $stringToFind){
-				$overview = Array();
-
-				$overview['merchantId'] = 1;
-				$overview['date'] = $dEndDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = $overviewExportArray[12];
-				$overview['transaction_confirmed_value'] = $overviewExportArray[14];
-				$overview['transaction_confirmed_commission'] = $overviewExportArray[16];
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				$totalOverviews[] = $overview;
-			}
-		}
-		return $totalOverviews;
 	}
 
 	/**

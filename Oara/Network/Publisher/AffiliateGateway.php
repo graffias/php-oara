@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -53,7 +72,6 @@ class Oara_Network_Publisher_AffiliateGateway extends Oara_Network {
 		}
 		$this->_extension = $extension;
 		
-		
 		$loginUrl = "{$this->_extension}/login.html";
 		$this->_client = new Oara_Curl_Access($loginUrl, $valuesLogin, $credentials);
 
@@ -89,7 +107,8 @@ class Oara_Network_Publisher_AffiliateGateway extends Oara_Network {
 		$urls[] = new Oara_Curl_Request("{$this->_extension}/affiliate_home.html", array());
 		$exportReport = $this->_client->get($urls);
 		$dom = new Zend_Dom_Query($exportReport[0]);
-		$results = $dom->query('.logout-a');
+		
+		$results = $dom->query('.logout');
 		if (count($results) > 0) {
 			$connection = true;
 		}
@@ -119,11 +138,13 @@ class Oara_Network_Publisher_AffiliateGateway extends Oara_Network {
 		$num = count($exportData);
 		for ($i = 4; $i < $num; $i++) {
 			$merchantExportArray = str_getcsv($exportData[$i], ";");
-
-			$obj = array();
-			$obj['cid'] = $merchantExportArray[0];
-			$obj['name'] = $merchantExportArray[1];
-			$merchants[] = $obj;
+			if ( $merchantExportArray[0] != "No available programs."){
+				$obj = array();
+				$obj['cid'] = $merchantExportArray[0];
+				$obj['name'] = $merchantExportArray[1];
+				$merchants[] = $obj;
+			}
+			
 		}
 		return $merchants;
 	}
@@ -158,18 +179,24 @@ class Oara_Network_Publisher_AffiliateGateway extends Oara_Network {
 						$transactionDate = new Zend_Date($transactionExportArray[4], 'dd/MM/yyyy HH:mm:ss', 'en');
 						$transaction['date'] = $transactionDate->toString("yyyy-MM-dd HH:mm:ss");
 						$transaction['unique_id'] = $transactionExportArray[0];
+						
+						if ($transactionExportArray[11] != null) {
+							$transaction['custom_id'] = $transactionExportArray[11];
+						}
 
-						if ($transactionExportArray[11] == "Approved" || $transactionExportArray[11] == "Approve") {
+						if ($transactionExportArray[12] == "Approved" || $transactionExportArray[12] == "Approve") {
 							$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
 						} else
-							if ($transactionExportArray[11] == "Pending") {
+							if ($transactionExportArray[12] == "Pending") {
 								$transaction['status'] = Oara_Utilities::STATUS_PENDING;
 							} else
-								if ($transactionExportArray[11] == "Declined") {
+								if ($transactionExportArray[12] == "Declined" || $transactionExportArray[12] == "Rejected") {
 									$transaction['status'] = Oara_Utilities::STATUS_DECLINED;
+								} else {
+									throw new Exception ("No Status found ".$transactionExportArray[12]);
 								}
 						$transaction['amount'] = Oara_Utilities::parseDouble($transactionExportArray[7]);
-						$transaction['commission'] = Oara_Utilities::parseDouble($transactionExportArray[8]);
+						$transaction['commission'] = Oara_Utilities::parseDouble($transactionExportArray[9]);
 						$totalTransactions[] = $transaction;
 					}
 				}
@@ -182,58 +209,6 @@ class Oara_Network_Publisher_AffiliateGateway extends Oara_Network {
 		return $totalTransactions;
 	}
 
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$overviewArray = Array();
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-								$overview['transaction_declined_value'] += $transaction['amount'];
-								$overview['transaction_declined_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-									$overview['transaction_paid_value'] += $transaction['amount'];
-									$overview['transaction_paid_commission'] += $transaction['commission'];
-								}
-				}
-				$overviewArray[] = $overview;
-			}
-		}
-
-		return $overviewArray;
-	}
 	/**
 	 * (non-PHPdoc)
 	 * @see Oara/Network/Oara_Network_Publisher_Base#getPaymentHistory()
@@ -254,9 +229,9 @@ class Oara_Network_Publisher_AffiliateGateway extends Oara_Network {
 				$obj = array();
 				$date = new Zend_Date($paymentExportArray[1], "dd/MM/yyyy");
 				$obj['date'] = $date->toString("yyyy-MM-dd HH:mm:ss");
-				$obj['pid'] = preg_replace("/[^0-9\.,]/", "", $paymentExportArray[0]);
+				$obj['pid'] = preg_replace('/[^0-9\.,]/', "", $paymentExportArray[0]);
 				$obj['method'] = 'BACS';
-				$value = preg_replace("/[^0-9\.,]/", "", $paymentExportArray[8]);
+				$value = preg_replace('/[^0-9\.,]/', "", $paymentExportArray[8]);
 				$obj['value'] = Oara_Utilities::parseDouble($value);
 				$paymentHistory[] = $obj;
 			}

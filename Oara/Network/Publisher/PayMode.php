@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -121,7 +140,7 @@ class Oara_Network_Publisher_PayMode extends Oara_Network {
 		$urls[] = new Oara_Curl_Request('https://secure.paymode.com/paymode/home.jsp?', array());
 		$exportReport = $this->_client->get($urls);
 
-		if (preg_match("/paymode\/logout\.jsp/", $exportReport[0], $matches)) {
+		if (preg_match('/paymode\/logout\.jsp/', $exportReport[0], $matches)) {
 
 			$urls = array();
 			$urls[] = new Oara_Curl_Request('https://secure.paymode.com/paymode/reports-pre_commission_history.jsp?', array());
@@ -192,8 +211,10 @@ class Oara_Network_Publisher_PayMode extends Oara_Network {
 			$urls[] = new Oara_Curl_Request('https://secure.paymode.com/paymode/reports-do_csv.jsp?closeJQS=true?', $valuesFromExportTemp);
 		}
 
-
 		$exportReport = $this->_client->get($urls);
+		$transactionCounter = 0;
+		$valueCounter = 0;
+		$commissionCounter = 0;
 		$j = 0;
 		foreach ($exportReport as $report){
 			$reportParameters = $urls[$j]->getParameters();
@@ -205,127 +226,33 @@ class Oara_Network_Publisher_PayMode extends Oara_Network {
 				for ($i = 1; $i < $num; $i++) {
 					$transactionArray = str_getcsv($exportReportData[$i], ",");
 					if (count($transactionArray) == 30 && $transactionArray[0] == 'D' && $transactionArray[1] == null){
-						$transaction['merchantId'] = 1;
-						$transaction['status'] = Oara_Utilities::STATUS_PAID;
-							
-						$transaction['date'] = $transactionDate->toString("yyyy-MM-dd HH:mm:ss");
-							
-						$transaction['unique_id'] = $transactionArray[25];
-						$transaction['custom_id'] = $transactionArray[21];
-
-						$transaction['amount'] = $filter->filter($transactionArray[24]);
-						$transaction['commission'] = $filter->filter($transactionArray[28]);
-							
-
-						$totalTransactions[] = $transaction;
+						$transactionCounter++;
+						$valueCounter += $filter->filter($transactionArray[24]);
+						$commissionCounter += $filter->filter($transactionArray[28]);
 					}
 				}
 			}
 			$j++;
 		}
-
-		/*
-		 $valuesFromExport = Oara_Utilities::cloneArray($this->_exportTransactionParameters);
-		 foreach ($this->_agentNumber as $agentNumber) {
-			$valuesFromExport[] = new Oara_Curl_Parameter($agentNumber, "on");
+		
+		if ($transactionCounter > 0){
+			
+			for ($i = 0; $i < count($dateList); $i++){
+				
+				$transaction = array();
+				$transaction['merchantId'] = 1;
+				$transaction['status'] = Oara_Utilities::STATUS_PAID;
+					
+				$transaction['date'] = $dateList[$i]->toString("yyyy-MM-dd HH:mm:ss");
+		
+				$transaction['amount'] = $valueCounter/count($dateList);
+				$transaction['commission'] = $commissionCounter/count($dateList);
+		
+				$totalTransactions[] = $transaction;
 			}
-			$valuesFromExport[] = new Oara_Curl_Parameter('startDate', $dStartDate->toString("MM/dd/yyyy"));
-			$valuesFromExport[] = new Oara_Curl_Parameter('endDate', $dEndDate->toString("MM/dd/yyyy"));
-
-			$urls = array();
-			$urls[] = new Oara_Curl_Request('https://secure.paymode.com/paymode/post-coll_comm_hist_detail.jsp?', $valuesFromExport);
-			$exportReport = $this->_client->post($urls);
-			$urls = array();
-			$urls[] = new Oara_Curl_Request('https://secure.paymode.com/paymode/tewf/navGenericReport.jsp?presentation=excel', array());
-			$exportReport = $this->_client->get($urls);
-
-			$dom = new Zend_Dom_Query($exportReport[0]);
-			$results = $dom->query('tr[valign="top"]');
-			foreach ($results as $line) {
-			$transaction = Array();
-			$lineHtml = self::DOMinnerHTML($line);
-			$domLine = new Zend_Dom_Query($lineHtml);
-			$resultsLine = $domLine->query('.rptcontentText');
-			if (count($resultsLine) > 0) {
-
-			$transaction['merchantId'] = 1;
-			$transaction['status'] = Oara_Utilities::STATUS_CONFIRMED;
-			$i = 0;
-			foreach ($resultsLine as $attribute) {
-			if ($i == 5) {
-			$transactionDate = new Zend_Date($attribute->nodeValue, 'MM/dd/yyyy', 'en');
-			$transaction['date'] = $transactionDate->toString("yyyy-MM-dd HH:mm:ss");
-			} else
-			if ($i == 10) {
-			$transaction['unique_id'] = $attribute->nodeValue;
-			} else
-			if ($i == 13) {
-			$transaction['amount'] = $filter->filter($attribute->nodeValue);
-			$transaction['commission'] = $filter->filter($attribute->nodeValue);
-			}
-			$i++;
-			}
-
-			$totalTransactions[] = $transaction;
-
-			}
-			}
-
-			*/
-		return $totalTransactions;
-	}
-
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$totalOverviews = Array();
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-						$overview['transaction_pending_value'] += $transaction['amount'];
-						$overview['transaction_pending_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-						$overview['transaction_declined_value'] += $transaction['amount'];
-						$overview['transaction_declined_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-						$overview['transaction_paid_value'] += $transaction['amount'];
-						$overview['transaction_paid_commission'] += $transaction['commission'];
-					}
-				}
-				$totalOverviews[] = $overview;
-			}
+		
 		}
-
-		return $totalOverviews;
-
+		return $totalTransactions;
 	}
 	/**
 	 * (non-PHPdoc)
@@ -408,7 +335,7 @@ class Oara_Network_Publisher_PayMode extends Oara_Network {
 						$payment['date'] = $paymentDate->toString("yyyy-MM-dd HH:mm:ss");
 
 						$paymentArray = str_getcsv($tableCsv[3], ";");
-						$payment['value'] = Oara_Utilities::parseDouble(preg_replace("/[^0-9\.,]/", "", $paymentArray[3]));
+						$payment['value'] = Oara_Utilities::parseDouble(preg_replace('/[^0-9\.,]/', "", $paymentArray[3]));
 						$payment['method'] = "BACS";
 						$paymentHistory[] = $payment;
 					}

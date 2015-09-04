@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Api Class
  *
  * @author     Carlos Morillo Merino
@@ -47,6 +66,8 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 		 * page Size.
 		 */
 		private $_pageSize = 100;
+		
+		private $_currency = null;
 
 		/**
 		 * User Id
@@ -63,6 +84,8 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 			$user = $credentials['user'];
 			$password = $credentials['apiPassword'];
 			$passwordExport = $credentials['password'];
+			
+			$this->_currency = $credentials['currency'];
 
 			$this->_exportOverviewParameters = array(new Oara_Curl_Parameter('post', 'yes'), new Oara_Curl_Parameter('merchant', ''), new Oara_Curl_Parameter('limit', '25'), new Oara_Curl_Parameter('submit.x', '75'), new Oara_Curl_Parameter('submit.y', '11'), new Oara_Curl_Parameter('submit', 'submit'));
 
@@ -72,7 +95,7 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 				//login through darwin
 				$loginUrl = 'https://darwin.affiliatewindow.com/login?';
 
-				$valuesLogin = array(new Oara_Curl_Parameter('email', $user), new Oara_Curl_Parameter('password', $passwordExport), new Oara_Curl_Parameter('formuserloginlogin', ''));
+				$valuesLogin = array(new Oara_Curl_Parameter('email', $user), new Oara_Curl_Parameter('password', $passwordExport), new Oara_Curl_Parameter('Login', ''));
 				$this->_exportClient = new Oara_Curl_Access($loginUrl, $valuesLogin, $credentials);
 
 				$urls = array();
@@ -84,9 +107,19 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 						$urls = array();
 						$urls[] = new Oara_Curl_Request('https://darwin.affiliatewindow.com/awin/affiliate/'.$user, array());
 						$exportReport = $this->_exportClient->get($urls);
-						if (preg_match("/\/user\/redirect\/v1\/type\/affiliate\/r\/(.*?)\">/", $exportReport[0], $matches)) {
+						$dom = new Zend_Dom_Query($exportReport[0]);
+						$links = $dom->query('a [href*="v1"]');
+						$href = null;
+						foreach ($links as $link){
+							$text = trim($link->nodeValue);
+							if ( $text == "Manage API Credentials"){
+								$href = $link->attributes->getNamedItem ( "href" )->nodeValue;
+								break;
+							}
+						}
+						if ($href != null) {
 							$urls = array();
-							$urls[] = new Oara_Curl_Request('https://darwin.affiliatewindow.com/user/redirect/v1/type/affiliate/r/'.$matches[1], array());
+							$urls[] = new Oara_Curl_Request('https://darwin.affiliatewindow.com'.$href, array());
 							$exportReport = $this->_exportClient->get($urls);
 							$dom = new Zend_Dom_Query($exportReport[0]);
 							$apiPassword = $dom->query('#aw_api_password_hash');
@@ -231,6 +264,13 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 						$transaction['status'] = $transactionObject->sStatus;
 						$transaction['amount'] = $transactionObject->mSaleAmount->dAmount;
 						$transaction['commission'] = $transactionObject->mCommissionAmount->dAmount;
+						
+						if (isset($transactionObject->aTransactionParts)){
+							$transactionPart = current($transactionObject->aTransactionParts);
+							if ($transactionPart->mCommissionAmount->sCurrency != $this->_currency){
+								$transaction['currency'] = $transactionPart->mCommissionAmount->sCurrency;
+							}
+						}
 						$totalTransactions[] = $transaction;
 					}
 
@@ -240,57 +280,6 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 
 			}
 			return $totalTransactions;
-		}
-		/**
-		 * (non-PHPdoc)
-		 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId,$dStartDate,$dEndDate)
-		 */
-		public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-			$totalOverviews = Array();
-			$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-			foreach ($transactionArray as $merchantId => $merchantTransaction) {
-				foreach ($merchantTransaction as $date => $transactionList) {
-
-					$overview = Array();
-
-					$overview['merchantId'] = $merchantId;
-					$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-					$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-					$overview['click_number'] = 0;
-					$overview['impression_number'] = 0;
-					$overview['transaction_number'] = 0;
-					$overview['transaction_confirmed_value'] = 0;
-					$overview['transaction_confirmed_commission'] = 0;
-					$overview['transaction_pending_value'] = 0;
-					$overview['transaction_pending_commission'] = 0;
-					$overview['transaction_declined_value'] = 0;
-					$overview['transaction_declined_commission'] = 0;
-					$overview['transaction_paid_value'] = 0;
-					$overview['transaction_paid_commission'] = 0;
-					foreach ($transactionList as $transaction) {
-						$overview['transaction_number']++;
-						if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-							$overview['transaction_confirmed_value'] += $transaction['amount'];
-							$overview['transaction_confirmed_commission'] += $transaction['commission'];
-						} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-							$overview['transaction_declined_value'] += $transaction['amount'];
-							$overview['transaction_declined_commission'] += $transaction['commission'];
-						} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-							$overview['transaction_paid_value'] += $transaction['amount'];
-							$overview['transaction_paid_commission'] += $transaction['commission'];
-						}
-					}
-					$totalOverviews[] = $overview;
-				}
-			}
-
-			return $totalOverviews;
 		}
 
 		/**
@@ -381,9 +370,11 @@ class Oara_Network_Publisher_AffiliateWindow extends Oara_Network {
 			$exportReport = $this->_exportClient->get($urls);
 			$exportData = str_getcsv($exportReport[0], "\n");
 			$num = count($exportData);
+			$header = str_getcsv($exportData[0], ",");
+			$index = array_search("Transaction ID", $header);
 			for ($j = 1; $j < $num; $j++) {
 				$transactionArray = str_getcsv($exportData[$j], ",");
-				$transactionList[] = end($transactionArray);
+				$transactionList[] = $transactionArray[$index];
 			}
 			return $transactionList;
 		}

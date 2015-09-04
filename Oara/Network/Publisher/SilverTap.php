@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -52,7 +71,7 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 		$password = $credentials['password'];
 		$report = null;
 		if ($credentials['network'] == "SilverTap") {
-			$this->_serverUrl = "http://mats.silvertap.com/";
+			$this->_serverUrl = "https://mats.silvertap.com/";
 			$report = 'AMSCommission_Breakdown';
 
 		} else
@@ -61,8 +80,7 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 				$report = 'BCCommission_Breakdown';
 			}
 
-		$loginUrl = $this->_serverUrl.'login.aspx';
-
+		$loginUrl = $this->_serverUrl.'Login.aspx?ReturnUrl=/';
 		$valuesLogin = array(new Oara_Curl_Parameter('txtUsername', $user),
 			new Oara_Curl_Parameter('txtPassword', $password),
 			new Oara_Curl_Parameter('cmdSubmit', 'Login'),
@@ -71,7 +89,6 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 		);
 
 		$this->_client = new Oara_Curl_Access($loginUrl, $valuesLogin, $credentials);
-
 		$exportPassword = md5($password);
 		$exportUser = self::getExportUser();
 
@@ -149,8 +166,8 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 		$endDate = $dEndDate->toString('dd/MM/yyyy');
 
 		$valueIndex = 9;
-		$commissionIndex = 15;
-		$statusIndex = 16;
+		$commissionIndex = 16;
+		$statusIndex = 17;
 		if ($this->_serverUrl == "https://mats.brandconversions.com/") {
 			$valueIndex = 11;
 			$commissionIndex = 17;
@@ -199,61 +216,7 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 		return $totalTransactions;
 
 	}
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$overviewArray = Array();
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
 
-
-		//Add transactions
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				unset($overviewDate);
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-						$overview['transaction_pending_value'] += $transaction['amount'];
-						$overview['transaction_pending_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-						$overview['transaction_declined_value'] += $transaction['amount'];
-						$overview['transaction_declined_commission'] += $transaction['commission'];
-					} else
-					if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-						$overview['transaction_paid_value'] += $transaction['amount'];
-						$overview['transaction_paid_commission'] += $transaction['commission'];
-					}
-				}
-				$overviewArray[] = $overview;
-			}
-		}
-
-		return $overviewArray;
-	}
 	/**
 	 * Sets up the merchant list and the program list.
 	 */
@@ -367,7 +330,7 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 					$exportReportUrl = $this->_client->get($urls, 'url');
 					$exportReportUrl = explode('/', $exportReportUrl[0]);
 					$exportReportUrl = $exportReportUrl[count($exportReportUrl) - 1];
-					$dir = realpath(dirname(__FILE__)).'/../../data/pdf/';
+					$dir = realpath ( dirname ( COOKIES_BASE_DIR ) ) . '/pdf/';
 					//writing temp pdf
 					$fh = fopen($dir.$exportReportUrl, 'w') or die("can't open file");
 					fwrite($fh, $exportReport[0]);
@@ -403,7 +366,7 @@ class Oara_Network_Publisher_SilverTap extends Oara_Network {
 						$exit_code = proc_close($pdfReader);
 					}
 
-					if (preg_match_all("/[0-9]*,?[0-9]*\.[0-9]+/", $pdfContent, $matches)) {
+					if (preg_match_all('/[0-9]*,?[0-9]*\.[0-9]+/', $pdfContent, $matches)) {
 						$obj['value'] = Oara_Utilities::parseDouble($matches[0][count($matches[0]) - 1]);
 					} else {
 						throw new Exception('Problem getting value in payments');

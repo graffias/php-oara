@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -228,7 +247,7 @@ class Oara_Network_Publisher_Stream20 extends Oara_Network {
 		$urls = array();
 		$urls[] = new Oara_Curl_Request('http://publisher.tradedoubler.com/pan/aReport3Selection.action?reportName=aAffiliateProgramOverviewReport', array());
 		$exportReport = $this->_client->get($urls);
-		if (preg_match("/\(([a-zA-Z]{0,2}[\/\.][a-zA-Z]{0,2}[\/\.][a-zA-Z]{0,2})\)/", $exportReport[0], $match)) {
+		if (preg_match('/\(([a-zA-Z]{0,2}[\/\.][a-zA-Z]{0,2}[\/\.][a-zA-Z]{0,2})\)/', $exportReport[0], $match)) {
 			$this->_dateFormat = $match[1];
 		}
 
@@ -358,152 +377,15 @@ class Oara_Network_Publisher_Stream20 extends Oara_Network {
 		}
 		return $totalTransactions;
 	}
-	/**
-	 * (non-PHPdoc)
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$totalOverviews = Array();
-		self::login();
-		$transactionArray = Oara_Utilities::transactionMapPerDay($transactionList);
-
-		$mothOverviewUrls = array();
-		$valuesFormExport = Oara_Utilities::cloneArray($this->_exportOverviewParameters);
-		$valuesFormExport[] = new Oara_Curl_Parameter('startDate', self::formatDate($dStartDate));
-		$valuesFormExport[] = new Oara_Curl_Parameter('endDate', self::formatDate($dEndDate));
-
-		$urls = array();
-		$urls[] = new Oara_Curl_Request('http://publisher.tradedoubler.com/pan/aReport3Internal.action?', $valuesFormExport);
-		$exportReport = $this->_client->get($urls);
-		$exportReport[0] = self::checkReportError($exportReport[0], $urls[0]);
-		$exportData = str_getcsv($exportReport[0], "\r\n");
-		$num = count($exportData);
-
-		if ($num > 3) {
-
-			$dateArray = Oara_Utilities::daysOfDifference($dStartDate, $dEndDate);
-			$dateArraySize = sizeof($dateArray);
-			for ($i = 0; $i < $dateArraySize; $i++) {
-				$valuesFormExport = Oara_Utilities::cloneArray($this->_exportOverviewParameters);
-				$valuesFormExport[] = new Oara_Curl_Parameter('startDate', self::formatDate($dateArray[$i]));
-				$valuesFormExport[] = new Oara_Curl_Parameter('endDate', self::formatDate($dateArray[$i]));
-				$mothOverviewUrls[] = new Oara_Curl_Request('http://publisher.tradedoubler.com/pan/aReport3Internal.action?', $valuesFormExport);
-			}
-		}
-
-		//First get the clicks and Impressions
-		$exportReport = $this->_client->get($mothOverviewUrls);
-		$exportReportNumber = count($exportReport);
-		for ($i = 0; $i < $exportReportNumber; $i++) {
-			$exportReport[$i] = self::checkReportError($exportReport[$i], $mothOverviewUrls[$i]);
-			$exportData = str_getcsv($exportReport[$i], "\r\n");
-			$num = count($exportData);
-			for ($j = 2; $j < $num - 1; $j++) {
-				$overviewExportArray = str_getcsv($exportData[$j], ";");
-				$parameter = $mothOverviewUrls[$i]->getParameter(39);
-				$overviewDate = self::toDate($parameter->getValue());
-
-				if (!isset($overviewExportArray[2])) {
-					throw new Exception('Problem getting overview\n\n');
-				}
-
-				if ($overviewDate->compare($dStartDate) >= 0 && $overviewDate->compare($dEndDate) <= 0 && isset($overviewExportArray[2])) {
-
-					$overview = Array();
-					$overview['merchantId'] = 1;
-					$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-					$overview['click_number'] = (int) $overviewExportArray[4];
-					$overview['impression_number'] = (int) $overviewExportArray[3];
-					$overview['transaction_number'] = 0;
-					$overview['transaction_confirmed_value'] = 0;
-					$overview['transaction_confirmed_commission'] = 0;
-					$overview['transaction_pending_value'] = 0;
-					$overview['transaction_pending_commission'] = 0;
-					$overview['transaction_declined_value'] = 0;
-					$overview['transaction_declined_commission'] = 0;
-					$overview['transaction_paid_value'] = 0;
-					$overview['transaction_paid_commission'] = 0;
-					$transactionDateArray = Oara_Utilities::getDayFromArray($overview['merchantId'], $transactionArray, $overviewDate, true);
-					foreach ($transactionDateArray as $transaction) {
-						$overview['transaction_number']++;
-						if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-							$overview['transaction_confirmed_value'] += $transaction['amount'];
-							$overview['transaction_confirmed_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-								$overview['transaction_pending_value'] += $transaction['amount'];
-								$overview['transaction_pending_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-									$overview['transaction_declined_value'] += $transaction['amount'];
-									$overview['transaction_declined_commission'] += $transaction['commission'];
-								} else
-									if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-										$overview['transaction_paid_value'] += $transaction['amount'];
-										$overview['transaction_paid_commission'] += $transaction['commission'];
-									}
-					}
-					if (Oara_Utilities::checkRegister($overview)) {
-						$totalOverviews[] = $overview;
-					}
-				}
-			}
-		}
-
-		//get the transactions that left
-		foreach ($transactionArray as $merchantId => $merchantTransaction) {
-			foreach ($merchantTransaction as $date => $transactionList) {
-
-				$overview = Array();
-
-				$overview['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date($date, "yyyy-MM-dd");
-				$overview['date'] = $overviewDate->toString("yyyy-MM-dd HH:mm:ss");
-				$overview['click_number'] = 0;
-				$overview['impression_number'] = 0;
-				$overview['transaction_number'] = 0;
-				$overview['transaction_confirmed_value'] = 0;
-				$overview['transaction_confirmed_commission'] = 0;
-				$overview['transaction_pending_value'] = 0;
-				$overview['transaction_pending_commission'] = 0;
-				$overview['transaction_declined_value'] = 0;
-				$overview['transaction_declined_commission'] = 0;
-				$overview['transaction_paid_value'] = 0;
-				$overview['transaction_paid_commission'] = 0;
-				foreach ($transactionList as $transaction) {
-					$overview['transaction_number']++;
-					if ($transaction['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview['transaction_confirmed_value'] += $transaction['amount'];
-						$overview['transaction_confirmed_commission'] += $transaction['commission'];
-					} else
-						if ($transaction['status'] == Oara_Utilities::STATUS_PENDING) {
-							$overview['transaction_pending_value'] += $transaction['amount'];
-							$overview['transaction_pending_commission'] += $transaction['commission'];
-						} else
-							if ($transaction['status'] == Oara_Utilities::STATUS_DECLINED) {
-								$overview['transaction_declined_value'] += $transaction['amount'];
-								$overview['transaction_declined_commission'] += $transaction['commission'];
-							} else
-								if ($transaction['status'] == Oara_Utilities::STATUS_PAID) {
-									$overview['transaction_paid_value'] += $transaction['amount'];
-									$overview['transaction_paid_commission'] += $transaction['commission'];
-								}
-				}
-				$totalOverviews[] = $overview;
-			}
-		}
-
-		return $totalOverviews;
-	}
 
 	public function checkReportError($content, $request, $try = 0) {
 
-		if (preg_match("/\/report\/published\/aAffiliateEventBreakdownReport/", $content, $matches)) {
+		if (preg_match('/\/report\/published\/aAffiliateEventBreakdownReport/', $content, $matches)) {
 			//report too big, we have to download it and read it
-			if (preg_match("/(\/report\/published\/(aAffiliateEventBreakdownReport(.*))\.zip)/", $content, $matches)) {
+			if (preg_match('/(\/report\/published\/(aAffiliateEventBreakdownReport(.*))\.zip)/', $content, $matches)) {
 
 				$file = "http://publisher.tradedoubler.com".$matches[0];
-				$newfile = realpath(dirname(__FILE__)).'/../../data/pdf/'.$matches[2].'.zip';
+				$newfile = realpath ( dirname ( COOKIES_BASE_DIR ) ) . '/pdf/'.$matches[2].'.zip';
 
 				if (!copy($file, $newfile)) {
 					throw new Exception('Failing copying the zip file \n\n');
@@ -512,10 +394,10 @@ class Oara_Network_Publisher_Stream20 extends Oara_Network {
 				if ($zip->open($newfile, ZIPARCHIVE::CREATE) !== TRUE) {
 					throw new Exception('Cannot open zip file \n\n');
 				}
-				$zip->extractTo(realpath(dirname(__FILE__)).'/../../data/pdf');
+				$zip->extractTo(realpath ( dirname ( COOKIES_BASE_DIR ) ) . '/pdf/');
 				$zip->close();
 
-				$unzipFilePath = realpath(dirname(__FILE__)).'/../../data/pdf/'.$matches[2];
+				$unzipFilePath = realpath ( dirname ( COOKIES_BASE_DIR ) ) . '/pdf/'.$matches[2];
 				$fileContent = file_get_contents($unzipFilePath);
 				unlink($newfile);
 				unlink($unzipFilePath);
@@ -588,7 +470,7 @@ class Oara_Network_Publisher_Stream20 extends Oara_Network {
 						$obj['date'] = $date->toString("yyyy-MM-dd HH:mm:ss");
 						$obj['pid'] = $pid;
 						$obj['method'] = 'BACS';
-						if (preg_match("/[-+]?[0-9]*,?[0-9]*\.?[0-9]+/", substr($paymentLine, 10), $matches)) {
+						if (preg_match('/[-+]?[0-9]*,?[0-9]*\.?[0-9]+/', substr($paymentLine, 10), $matches)) {
 							$obj['value'] = $filter->filter($matches[0]);
 						} else {
 							throw new Exception("Problem reading payments");

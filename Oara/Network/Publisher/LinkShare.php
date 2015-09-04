@@ -1,5 +1,24 @@
 <?php
 /**
+ The goal of the Open Affiliate Report Aggregator (OARA) is to develop a set
+ of PHP classes that can download affiliate reports from a number of affiliate networks, and store the data in a common format.
+
+ Copyright (C) 2014  Fubra Limited
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Affero General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or any later version.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ Contact
+ ------------
+ Fubra Limited <support@fubra.com> , +44 (0)1252 367 200
+ **/
+/**
  * Export Class
  *
  * @author     Carlos Morillo Merino
@@ -12,27 +31,27 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 	
 	/**
 	 * Client
-	 * 
+	 *
 	 * @var unknown_type
 	 */
 	private $_client = null;
 	
 	/**
 	 * Site List
-	 * 
+	 *
 	 * @var unknown_type
 	 */
 	private $_siteList = array ();
 	
 	/**
 	 * Nid for this Linkshare instance
-	 * 
+	 *
 	 * @var string
 	 */
 	private $_nid = null;
 	/**
 	 * Constructor and Login
-	 * 
+	 *
 	 * @param
 	 *        	$ls
 	 * @return Oara_Network_Publisher_Ls_Export
@@ -84,7 +103,7 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 		$result = $this->_client->get ( $urls );
 		
 		// Check if the credentials are right
-		if (preg_match ( "/https:\/\/cli\.linksynergy\.com\/cli\/common\/logout\.php/", $result [0], $matches )) {
+		if (preg_match ( '/https:\/\/cli\.linksynergy\.com\/cli\/common\/logout\.php/', $result [0], $matches )) {
 			
 			$urls = array ();
 			$urls [] = new Oara_Curl_Request ( 'https://cli.linksynergy.com/cli/publisher/my_account/marketingChannels.php', array () );
@@ -109,21 +128,7 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 					$resultsSites [] = $result;
 				}
 			}
-			
-			$results = $dom->query ( "#headerLoginWebsiteDDLContent .headerLoginWebsiteDDLItem" );
-			if (count ( $results ) == 0) {
-				preg_match ( "/sid=(.+?)&/", $resultHtml [0], $matches );
-				$site = null;
-				foreach ( $resultsSites as $result ) {
-					if ($result ["id"] == $matches [1]) {
-						$site = $result;
-					}
-				}
-				
-				$resultsSites = array ();
-				$resultsSites [] = $site;
-			}
-			
+		
 			$siteList = array ();
 			foreach ( $resultsSites as $resultSite ) {
 				$site = new stdClass ();
@@ -225,7 +230,7 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 	
 	/**
 	 * (non-PHPdoc)
-	 * 
+	 *
 	 * @see library/Oara/Network/Oara_Network_Publisher_Interface#getMerchantList()
 	 */
 	public function getMerchantList() {
@@ -269,8 +274,9 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 	
 	/**
 	 * (non-PHPdoc)
-	 * 
+	 *
 	 * @see library/Oara/Network/Oara_Network_Publisher_Interface#getTransactionList($idMerchant, $dStartDate, $dEndDate)
+	 *     
 	 */
 	public function getTransactionList($merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
 		$totalTransactions = Array ();
@@ -302,7 +308,7 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 					if ($transactionData [0] != '<none>') {
 						$transaction ['custom_id'] = $transactionData [0];
 					}
-					$transaction ['unique_id'] = $transactionData [3];
+					$transaction ['unique_id'] = $transactionData [3]."_".$transactionData [6];
 					
 					$sales = $filter->filter ( $transactionData [7] );
 					
@@ -316,6 +322,12 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 					
 					$transaction ['commission'] = $filter->filter ( $transactionData [9] );
 					
+					if ($transaction ['commission'] < 0){
+						$transaction ['amount'] = 0;
+						$transaction ['commission'] = 0;
+						$transaction ['status'] =  Oara_Utilities::STATUS_DECLINED;
+					}
+					
 					$totalTransactions [] = $transaction;
 				}
 			}
@@ -324,59 +336,10 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 		
 		return $totalTransactions;
 	}
-	/**
-	 * (non-PHPdoc)
-	 * 
-	 * @see library/Oara/Network/Oara_Network_Publisher_Base#getOverviewList($merchantId, $dStartDate, $dEndDate)
-	 */
-	public function getOverviewList($transactionList = null, $merchantList = null, Zend_Date $dStartDate = null, Zend_Date $dEndDate = null, $merchantMap = null) {
-		$overviewArray = Array ();
-		$transactionArray = Oara_Utilities::transactionMapPerDay ( $transactionList );
-		foreach ( $transactionArray as $merchantId => $merchantTransaction ) {
-			foreach ( $merchantTransaction as $date => $transactionList ) {
-				
-				$overview = Array ();
-				$overview ['merchantId'] = $merchantId;
-				$overviewDate = new Zend_Date ( $date, "yyyy-MM-dd" );
-				$overview ['date'] = $overviewDate->toString ( "yyyy-MM-dd HH:mm:ss" );
-				unset ( $overviewDate );
-				$overview ['click_number'] = 0;
-				$overview ['impression_number'] = 0;
-				$overview ['transaction_number'] = 0;
-				$overview ['transaction_confirmed_value'] = 0;
-				$overview ['transaction_confirmed_commission'] = 0;
-				$overview ['transaction_pending_value'] = 0;
-				$overview ['transaction_pending_commission'] = 0;
-				$overview ['transaction_declined_value'] = 0;
-				$overview ['transaction_declined_commission'] = 0;
-				$overview ['transaction_paid_value'] = 0;
-				$overview ['transaction_paid_commission'] = 0;
-				foreach ( $transactionList as $transaction ) {
-					$overview ['transaction_number'] ++;
-					if ($transaction ['status'] == Oara_Utilities::STATUS_CONFIRMED) {
-						$overview ['transaction_confirmed_value'] += $transaction ['amount'];
-						$overview ['transaction_confirmed_commission'] += $transaction ['commission'];
-					} else if ($transaction ['status'] == Oara_Utilities::STATUS_PENDING) {
-						$overview ['transaction_pending_value'] += $transaction ['amount'];
-						$overview ['transaction_pending_commission'] += $transaction ['commission'];
-					} else if ($transaction ['status'] == Oara_Utilities::STATUS_DECLINED) {
-						$overview ['transaction_declined_value'] += $transaction ['amount'];
-						$overview ['transaction_declined_commission'] += $transaction ['commission'];
-					} else if ($transaction ['status'] == Oara_Utilities::STATUS_PAID) {
-						$overview ['transaction_paid_value'] += $transaction ['amount'];
-						$overview ['transaction_paid_commission'] += $transaction ['commission'];
-					}
-				}
-				$overviewArray [] = $overview;
-			}
-		}
-		
-		return $overviewArray;
-	}
 	
 	/**
 	 * (non-PHPdoc)
-	 * 
+	 *
 	 * @see Oara/Network/Oara_Network_Publisher_Base#getPaymentHistory()
 	 */
 	public function getPaymentHistory() {
@@ -398,7 +361,7 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 				}
 				
 				echo "getting Payment for Site " . $site->id . " and year " . $bdate->toString ( "yyyy" ) . " \n\n";
-				//https://65.245.193.87
+				// https://65.245.193.87
 				
 				$url = "https://reportws.linksynergy.com/downloadreport.php?bdate=" . $bdate->toString ( "yyyyMMdd" ) . "&edate=" . $edate->toString ( "yyyyMMdd" ) . "&token=" . $site->secureToken . "&nid=" . $this->_nid . "&reportid=1";
 				$result = file_get_contents ( $url );
@@ -428,14 +391,17 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 	/**
 	 *
 	 *
+	 *
 	 * It returns the transactions for a payment
-	 * 
+	 *
 	 * @param int $paymentId        	
 	 */
 	public function paymentTransactions($paymentId, $merchantList, $startDate) {
 		$transactionList = array ();
+		/*
 		foreach ( $this->_siteList as $site ) {
-			$url = "https://reportws.linksynergy.com/downloadreport.php?payid=$paymentId&token=" . $site->secureToken . "&reportid=3";
+			
+			$url = "https://reportws.linksynergy.com/downloadreport.php?payid=$paymentId&token=" . $site->secureToken . "&reportid=2";
 			$result = file_get_contents ( $url );
 			if (preg_match ( "/You cannot request/", $result )) {
 				throw new Exception ( "Reached the limit" );
@@ -444,18 +410,30 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 			$number = count ( $paymentLines );
 			for($j = 1; $j < $number; $j ++) {
 				$paymentData = str_getcsv ( $paymentLines [$j], "," );
-				$transactionList [] = $paymentData [4];
+				
+				$url = "https://reportws.linksynergy.com/downloadreport.php?invoiceid={$paymentData[2]}&token=" . $site->secureToken . "&reportid=3";
+				$result = file_get_contents ( $url );
+				if (preg_match ( "/You cannot request/", $result )) {
+					throw new Exception ( "Reached the limit" );
+				}
+				$transactionLines = str_getcsv ( $result, "\n" );
+				$numbeTr = count ( $transactionLines );
+				for($z = 1; $z < $numbeTr; $z ++) {
+					$transactionData = str_getcsv ( $transactionLines [$z], "," );
+					$transactionList [] = $transactionData [4];
+				}
 			}
 		}
-		
+		*/
 		return $transactionList;
 	}
 	
 	/**
 	 *
 	 *
+	 *
 	 * Function that returns the inner HTML code
-	 * 
+	 *
 	 * @param unknown_type $element        	
 	 */
 	private function DOMinnerHTML($element) {
@@ -472,8 +450,9 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 	/**
 	 *
 	 *
+	 *
 	 * Function that Convert from a table to Csv
-	 * 
+	 *
 	 * @param unknown_type $html        	
 	 */
 	private function htmlToCsv($html) {
@@ -503,5 +482,17 @@ class Oara_Network_Publisher_LinkShare extends Oara_Network {
 		}
 		$exportData = str_getcsv ( $csv, "\n" );
 		return $exportData;
+	}
+	
+	/**
+	 *
+	 *
+	 * Compare date by strings
+	 * 
+	 * @param unknown_type $a        	
+	 * @param unknown_type $b        	
+	 */
+	static function compareDates($a, $b) {
+		return strcmp ( $a ['date'], $b ['date'] );
 	}
 }
